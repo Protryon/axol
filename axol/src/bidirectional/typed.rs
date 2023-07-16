@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use axol_http::{header::TypedHeader, request::RequestPartsRef, response::ResponsePartsRef};
+use axol_http::{header::TypedHeader, request::RequestPartsRef, response::ResponsePartsRef, Extensions};
 
 use crate::{Error, FromRequestParts, IntoResponseParts, Result};
 
@@ -31,7 +31,7 @@ impl<H: TypedHeader> IntoResponseParts for Typed<H> {
 
 #[async_trait::async_trait]
 impl<'a, H: TypedHeader + Send + Sync + 'a> FromRequestParts<'a> for Typed<H> {
-    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+    async fn from_request_parts(request: RequestPartsRef<'a>, _: &mut Extensions) -> Result<Self> {
         request
             .headers
             .get_typed::<H>()

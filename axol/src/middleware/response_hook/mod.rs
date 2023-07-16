@@ -1,5 +1,5 @@
 use crate::{FromRequestParts, Result};
-use axol_http::{request::RequestPartsRef, response::Response};
+use axol_http::{request::RequestPartsRef, response::Response, Extensions};
 use futures::Future;
 
 #[async_trait::async_trait]
@@ -9,6 +9,7 @@ pub trait EarlyResponseHook: Send + Sync + 'static {
     async fn handle_response<'a>(
         &self,
         request: RequestPartsRef<'a>,
+        request_extensions: &mut Extensions,
         response: &mut Response,
     ) -> Result<()>;
 }
@@ -19,7 +20,7 @@ pub trait LateResponseHook: Send + Sync + 'static {
     /// Notably, errors cannot be thrown here.
     /// If any request extractors fail, an error is logged and the hook is skipped. Keep that in mind!
     /// It's best to use Option extractors if any.
-    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, response: &mut Response);
+    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, request_extensions: &mut Extensions, response: &mut Response);
 }
 
 #[async_trait::async_trait]
@@ -31,6 +32,7 @@ where
     async fn handle_response<'a>(
         &self,
         _request: RequestPartsRef<'a>,
+        _request_extensions: &mut Extensions,
         _response: &mut Response,
     ) -> Result<()> {
         self().await
@@ -42,6 +44,7 @@ pub trait EarlyResponseHookExpansion<G>: Send + Sync + 'static {
     async fn handle_response<'a>(
         &self,
         request: RequestPartsRef<'a>,
+        request_extensions: &mut Extensions,
         response: &mut Response,
     ) -> Result<()>;
 }
@@ -51,9 +54,10 @@ impl<G: 'static> EarlyResponseHook for Box<dyn EarlyResponseHookExpansion<G>> {
     async fn handle_response<'a>(
         &self,
         request: RequestPartsRef<'a>,
+        request_extensions: &mut Extensions,
         response: &mut Response,
     ) -> Result<()> {
-        (&**self).handle_response(request, response).await
+        (&**self).handle_response(request, request_extensions, response).await
     }
 }
 //
@@ -64,20 +68,20 @@ where
     F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future<Output = ()> + Send,
 {
-    async fn handle_response<'a>(&self, _request: RequestPartsRef<'a>, _response: &mut Response) {
+    async fn handle_response<'a>(&self, _request: RequestPartsRef<'a>, _: &mut Extensions, _response: &mut Response) {
         self().await
     }
 }
 
 #[async_trait::async_trait]
 pub trait LateResponseHookExpansion<G>: Send + Sync + 'static {
-    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, response: &mut Response);
+    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, request_extensions: &mut Extensions, response: &mut Response);
 }
 
 #[async_trait::async_trait]
 impl<G: 'static> LateResponseHook for Box<dyn LateResponseHookExpansion<G>> {
-    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, response: &mut Response) {
-        (&**self).handle_response(request, response).await
+    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, request_extensions: &mut Extensions, response: &mut Response) {
+        (&**self).handle_response(request, request_extensions, response).await
     }
 }
 
@@ -91,9 +95,9 @@ macro_rules! impl_handler {
             Fut: Future<Output = Result<()>> + Send + 'static,
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
         {
-            async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, response: &mut Response) -> Result<()> {
+            async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, request_extensions: &mut Extensions, response: &mut Response) -> Result<()> {
                 $(
-                    let $ty = $ty::from_request_parts(request).await?;
+                    let $ty = $ty::from_request_parts(request, request_extensions).await?;
                 )*
 
                 self($($ty,)* response).await
@@ -107,9 +111,9 @@ macro_rules! impl_handler {
             Fut: Future<Output = ()> + Send + 'static,
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
         {
-            async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, response: &mut Response) {
+            async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, request_extensions: &mut Extensions, response: &mut Response) {
                 $(
-                    let $ty = match $ty::from_request_parts(request).await {
+                    let $ty = match $ty::from_request_parts(request, request_extensions).await {
                         Ok(x) => x,
                         Err(e) => {
                             log::warn!("late response hook extractor error, skipped hook: {e}");

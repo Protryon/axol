@@ -1,7 +1,6 @@
 use std::{
     any::Any,
     convert::Infallible,
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use http::Error as HttpError;
@@ -149,7 +148,6 @@ impl RequestParts {
             uri: &self.uri,
             version: self.version,
             headers: &self.headers,
-            extensions: &self.extensions,
         }
     }
 }
@@ -167,20 +165,16 @@ pub struct RequestPartsRef<'a> {
 
     /// The request's headers. All headers are always lowercased.
     pub headers: &'a HeaderMap,
-
-    /// The request's extensions
-    pub extensions: &'a Extensions,
 }
 
 impl Request {
-    pub fn parts(&self) -> RequestPartsRef<'_> {
-        RequestPartsRef {
+    pub fn parts(&mut self) -> (RequestPartsRef<'_>, &mut Extensions) {
+        (RequestPartsRef {
             method: self.method,
             uri: &self.uri,
             version: self.version,
             headers: &self.headers,
-            extensions: &self.extensions,
-        }
+        }, &mut self.extensions)
     }
 
     /// Creates a new builder-style object to manufacture a `Request`

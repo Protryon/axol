@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use anyhow::anyhow;
-use axol_http::{request::RequestPartsRef, response::ResponsePartsRef};
+use axol_http::{request::RequestPartsRef, response::ResponsePartsRef, Extensions};
 
 use crate::{Error, FromRequestParts, IntoResponseParts, Result};
 
@@ -11,8 +11,8 @@ pub struct Extension<'a, T>(pub &'a T);
 
 #[async_trait::async_trait]
 impl<'a, T: Send + Sync + 'static> FromRequestParts<'a> for Extension<'a, T> {
-    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
-        Ok(Self(request.extensions.get::<T>().ok_or_else(|| {
+    async fn from_request_parts(request: RequestPartsRef<'a>, extensions: &mut Extensions) -> Result<Self> {
+        Ok(Self(extensions.get::<T>().ok_or_else(|| {
             Error::internal(anyhow!("missing request extension"))
         })?))
     }

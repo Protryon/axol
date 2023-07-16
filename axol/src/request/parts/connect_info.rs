@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, ops::Deref};
 
 use anyhow::anyhow;
-use axol_http::request::RequestPartsRef;
+use axol_http::{request::RequestPartsRef, Extensions};
 
 use crate::{Error, FromRequestParts, Result};
 
@@ -18,9 +18,8 @@ impl Deref for ConnectInfo {
 
 #[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for ConnectInfo {
-    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
-        let info = request
-            .extensions
+    async fn from_request_parts(_: RequestPartsRef<'a>, extensions: &mut Extensions) -> Result<Self> {
+        let info = extensions
             .get::<ConnectInfo>()
             .ok_or_else(|| Error::internal(anyhow!("missing ConnectInfo extension")))?;
         Ok(*info)

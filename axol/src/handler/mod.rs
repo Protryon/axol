@@ -1,10 +1,10 @@
 use crate::{FromRequest, FromRequestParts, IntoResponse, Result};
-use axol_http::{request::RequestPartsRef, response::Response, Body};
+use axol_http::{request::RequestPartsRef, response::Response, Body, Extensions};
 use futures::Future;
 
 #[async_trait::async_trait]
 pub trait Handler: Send + Sync + 'static {
-    async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, body: Body) -> Result<Response>;
+    async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, extensions: &mut Extensions, body: Body) -> Result<Response>;
 }
 
 #[async_trait::async_trait]
@@ -14,20 +14,20 @@ where
     Fut: Future<Output = Res> + Send,
     Res: IntoResponse,
 {
-    async fn call<'a>(&self, _request_parts: RequestPartsRef<'a>, _body: Body) -> Result<Response> {
+    async fn call<'a>(&self, _request_parts: RequestPartsRef<'a>, _extensions: &mut Extensions, _body: Body) -> Result<Response> {
         self().await.into_response()
     }
 }
 
 #[async_trait::async_trait]
 pub trait HandlerExpansion<G>: Send + Sync + 'static {
-    async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, body: Body) -> Result<Response>;
+    async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, extensions: &mut Extensions, body: Body) -> Result<Response>;
 }
 
 #[async_trait::async_trait]
 impl<G: 'static> Handler for Box<dyn HandlerExpansion<G>> {
-    async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, body: Body) -> Result<Response> {
-        (&**self).call(request_parts, body).await
+    async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, extensions: &mut Extensions, body: Body) -> Result<Response> {
+        (&**self).call(request_parts, extensions, body).await
     }
 }
 
@@ -44,12 +44,12 @@ macro_rules! impl_handler {
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
             for<'a> $last: FromRequest<'a> + Send,
         {
-            async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, body: Body) -> Result<Response> {
+            async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, extensions: &mut Extensions, body: Body) -> Result<Response> {
                 $(
-                    let $ty = $ty::from_request_parts(request_parts).await?;
+                    let $ty = $ty::from_request_parts(request_parts, extensions).await?;
                 )*
 
-                let $last = $last::from_request(request_parts, body).await?;
+                let $last = $last::from_request(request_parts, extensions, body).await?;
 
                 let res = self($($ty,)* $last,).await;
 

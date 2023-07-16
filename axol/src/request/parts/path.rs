@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use axol_http::request::RequestPartsRef;
+use axol_http::{request::RequestPartsRef, Extensions};
 use serde::Deserialize;
 
 use crate::{Error, FromRequestParts, Result};
@@ -22,8 +22,8 @@ impl<'a> Deref for RawPath<'a> {
 
 #[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for RawPath<'a> {
-    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
-        match request.extensions.get::<RawPathExt>() {
+    async fn from_request_parts(request: RequestPartsRef<'a>, extensions: &mut Extensions) -> Result<Self> {
+        match extensions.get::<RawPathExt>() {
             Some(values) => Ok(Self(&values.0)),
             None => Ok(Self(&[])),
         }
@@ -43,9 +43,8 @@ impl<T> Deref for Path<T> {
 
 #[async_trait::async_trait]
 impl<'a, T: Deserialize<'a> + Send + Sync + 'a> FromRequestParts<'a> for Path<T> {
-    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
-        let params = request
-            .extensions
+    async fn from_request_parts(request: RequestPartsRef<'a>, extensions: &mut Extensions) -> Result<Self> {
+        let params = extensions
             .get::<RawPathExt>()
             .ok_or_else(|| Error::internal(anyhow::anyhow!("missing RawPathExt extension")))?;
         T::deserialize(path_de::PathDeserializer::new(&params.0))

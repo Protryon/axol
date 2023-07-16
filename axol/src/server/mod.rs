@@ -128,7 +128,9 @@ where
         }
         let body = std::mem::take(&mut request.body);
 
-        observed.route.call(request.parts(), body).await
+        let (parts, extensions) = request.parts();
+
+        observed.route.call(parts, extensions, body).await
     }
 
     async fn handle_error(
@@ -136,8 +138,9 @@ where
         request: &mut Request,
         mut error: Error,
     ) -> Response {
+        let (parts, extensions) = request.parts();
         for middleware in &observed.error_hooks {
-            match middleware.handle_error(request.parts(), &mut error).await {
+            match middleware.handle_error(parts, extensions, &mut error).await {
                 Ok(Some(x)) => return x,
                 Ok(None) => (),
                 Err(e) => {
@@ -146,7 +149,7 @@ where
             }
         }
         DefaultErrorHook
-            .handle_error(request.parts(), &mut error)
+            .handle_error(parts, extensions, &mut error)
             .await
             .unwrap()
             .unwrap()
@@ -157,9 +160,10 @@ where
         request: &mut Request,
         mut response: Response,
     ) -> Response {
+        let (parts, extensions) = request.parts();
         for middleware in &observed.early_response_hooks {
             match middleware
-                .handle_response(request.parts(), &mut response)
+                .handle_response(parts, extensions, &mut response)
                 .await
             {
                 Ok(()) => (),
@@ -176,8 +180,9 @@ where
         request: &mut Request,
         response: &mut Response,
     ) {
+        let (parts, extensions) = request.parts();
         for middleware in &observed.late_response_hooks {
-            middleware.handle_response(request.parts(), response).await;
+            middleware.handle_response(parts, extensions, response).await;
         }
     }
 
