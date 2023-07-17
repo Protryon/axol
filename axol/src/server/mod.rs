@@ -24,9 +24,14 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::Router;
 
+#[cfg(feature = "tls")]
+mod tls_acceptor;
+#[cfg(feature = "tls")]
+pub use tls_acceptor::*;
+
 #[derive(Builder)]
 #[builder(pattern = "owned")]
-pub struct Server<I: Accept> {
+pub struct Server<I> {
     incoming: I,
     router: Router,
 }
@@ -35,6 +40,34 @@ impl ServerBuilder<AddrIncoming> {
     pub fn bind(mut self, addr: SocketAddr) -> Result<Self, HyperError> {
         self.incoming = Some(AddrIncoming::bind(&addr)?);
         Ok(self)
+    }
+}
+
+impl ServerBuilder<TlsIncoming> {
+    pub fn bind_with_tls(
+        self,
+        addr: SocketAddr,
+        tls_config: rustls::ServerConfig,
+    ) -> Result<
+        ServerBuilder<
+            AcceptWrapper<
+                impl Stream<Item = Result<tokio_rustls::server::TlsStream<AddrStream>, std::io::Error>>,
+            >,
+        >,
+        HyperError,
+    > {
+        Ok(ServerBuilder {
+            incoming: Some(
+                TlsIncoming::new_static(
+                    addr,
+                    false,
+                    Some(std::time::Duration::from_secs(10)),
+                    tls_config,
+                )?
+                .start(),
+            ),
+            router: self.router,
+        })
     }
 }
 
@@ -61,18 +94,33 @@ impl Server<AddrIncoming> {
     }
 }
 
+impl Server<TlsIncoming> {
+    pub fn bind_with_tls(
+        self,
+        addr: SocketAddr,
+        tls_config: rustls::ServerConfig,
+    ) -> Result<
+        ServerBuilder<
+            AcceptWrapper<
+                impl Stream<Item = Result<tokio_rustls::server::TlsStream<AddrStream>, std::io::Error>>,
+            >,
+        >,
+        HyperError,
+    > {
+        ServerBuilder::default().bind_with_tls(addr, tls_config)
+    }
+}
+
 impl<I: Accept> Server<I> {
     pub fn builder() -> ServerBuilder<I> {
         ServerBuilder::default()
     }
 }
-fn x() {}
-//TODO: builtin TLS support
 
 pin_project! {
     struct BodyInputStream {
         #[pin]
-        body: hyper::Body,
+        body: HyperBody,
         data_ended: bool,
         trailers_ended: bool,
     }
