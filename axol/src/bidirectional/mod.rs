@@ -4,7 +4,9 @@ pub use form::*;
 mod json;
 pub use json::*;
 
+#[cfg(feature = "multipart")]
 mod multipart;
+#[cfg(feature = "multipart")]
 pub use multipart::*;
 
 mod typed;
