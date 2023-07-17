@@ -1,7 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
-use axol_http::{request::RequestPartsRef, Extensions};
-use serde::Deserialize;
+use axol_http::{request::RequestPartsRef};
+use serde::de::DeserializeOwned;
 
 use crate::{Error, FromRequestParts, Result};
 
@@ -10,9 +10,9 @@ use super::path_de::{self, PathDeserializationError};
 pub struct RawPathExt(pub Vec<(Arc<str>, String)>);
 
 #[derive(Debug, Clone)]
-pub struct RawPath<'a>(pub &'a [(Arc<str>, String)]);
+pub struct RawPath(pub Vec<(Arc<str>, String)>);
 
-impl<'a> Deref for RawPath<'a> {
+impl Deref for RawPath {
     type Target = [(Arc<str>, String)];
 
     fn deref(&self) -> &Self::Target {
@@ -21,11 +21,11 @@ impl<'a> Deref for RawPath<'a> {
 }
 
 #[async_trait::async_trait]
-impl<'a> FromRequestParts<'a> for RawPath<'a> {
-    async fn from_request_parts(request: RequestPartsRef<'a>, extensions: &mut Extensions) -> Result<Self> {
-        match extensions.get::<RawPathExt>() {
-            Some(values) => Ok(Self(&values.0)),
-            None => Ok(Self(&[])),
+impl<'a> FromRequestParts<'a> for RawPath {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        match request.extensions.get::<RawPathExt>() {
+            Some(values) => Ok(Self(values.0.clone())),
+            None => Ok(Self(vec![])),
         }
     }
 }
@@ -42,9 +42,10 @@ impl<T> Deref for Path<T> {
 }
 
 #[async_trait::async_trait]
-impl<'a, T: Deserialize<'a> + Send + Sync + 'a> FromRequestParts<'a> for Path<T> {
-    async fn from_request_parts(request: RequestPartsRef<'a>, extensions: &mut Extensions) -> Result<Self> {
-        let params = extensions
+// since it's from extensions, it must be DeserializeOwned
+impl<'a, T: DeserializeOwned + Send + Sync + 'a> FromRequestParts<'a> for Path<T> {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        let params = request.extensions
             .get::<RawPathExt>()
             .ok_or_else(|| Error::internal(anyhow::anyhow!("missing RawPathExt extension")))?;
         T::deserialize(path_de::PathDeserializer::new(&params.0))

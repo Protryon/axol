@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use axol_http::{request::RequestPartsRef, Extensions};
+use axol_http::request::RequestPartsRef;
 use serde::Deserialize;
 
 use crate::{Error, FromRequestParts, Result};
@@ -18,7 +18,7 @@ impl<'a> Deref for RawQuery<'a> {
 
 #[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for RawQuery<'a> {
-    async fn from_request_parts(request: RequestPartsRef<'a>, _: &mut Extensions) -> Result<Self> {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         request
             .uri
             .query()
@@ -40,7 +40,7 @@ impl<T> Deref for Query<T> {
 
 #[async_trait::async_trait]
 impl<'a, T: Deserialize<'a> + Send + Sync + 'a> FromRequestParts<'a> for Query<T> {
-    async fn from_request_parts(request: RequestPartsRef<'a>, _: &mut Extensions) -> Result<Self> {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         let query = request.uri.query().unwrap_or_default();
         Ok(Query(serde_urlencoded::from_str(query).map_err(|e| {
             Error::bad_request(format!("Failed to deserialize query string: {e}"))

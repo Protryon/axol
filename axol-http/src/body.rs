@@ -28,6 +28,10 @@ impl Body {
         Self::default()
     }
 
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
     pub async fn collect(self) -> Result<Vec<u8>, anyhow::Error> {
         match self {
             Body::Bytes(x) => Ok(x),

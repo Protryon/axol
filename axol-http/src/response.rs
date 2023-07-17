@@ -391,7 +391,7 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn header<K, V>(self, name: impl AsRef<str>, value: impl Into<String>) -> Builder {
+    pub fn header(self, name: impl AsRef<str>, value: impl Into<String>) -> Builder {
         self.and_then(move |mut head| {
             head.headers.insert(name, value);
             Ok(head)
@@ -460,7 +460,7 @@ impl Builder {
     where
         T: Any + Send + Sync + 'static,
     {
-        self.and_then(move |mut head| {
+        self.and_then(move |head| {
             head.extensions.insert(extension);
             Ok(head)
         })

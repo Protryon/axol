@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use axol_http::{
     request::{Request, RequestPartsRef},
-    response::Response, Extensions,
+    response::Response,
 };
 use log::Level;
 
@@ -28,18 +28,18 @@ impl RequestHook for Logger {
 
 #[async_trait::async_trait]
 impl LateResponseHook for Logger {
-    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, request_extensions: &mut Extensions, response: &mut Response) {
-        let Some(log_info) = request_extensions.get::<LogInfo>() else {
+    async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, response: &mut Response) {
+        let Some(log_info) = request.extensions.get::<LogInfo>() else {
             // we got inserted part-way through?
             return;
         };
         let elapsed = log_info.start.elapsed();
-        let Some(remote) = request_extensions.get::<ConnectInfo>() else {
+        let Some(remote) = request.extensions.get::<ConnectInfo>() else {
             // not a remote connection
             return;
         };
         let mut level = self.default_log_level;
-        if let Some(new_level) = request_extensions.get::<Level>() {
+        if let Some(new_level) = request.extensions.get::<Level>() {
             level = *new_level;
         }
         if let Some(new_level) = response.extensions.get::<Level>() {

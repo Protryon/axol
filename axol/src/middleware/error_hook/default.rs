@@ -1,4 +1,4 @@
-use axol_http::{request::RequestPartsRef, response::Response, Extensions};
+use axol_http::{request::RequestPartsRef, response::Response};
 
 use crate::{Error, ErrorHook, Result};
 
@@ -9,7 +9,6 @@ impl ErrorHook for DefaultErrorHook {
     async fn handle_error<'a>(
         &self,
         _request: RequestPartsRef<'a>,
-        _: &mut Extensions,
         error: &mut Error,
     ) -> Result<Option<Response>> {
         //TODO: log header

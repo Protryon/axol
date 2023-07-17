@@ -142,12 +142,13 @@ pub struct RequestParts {
 }
 
 impl RequestParts {
-    pub fn as_ref(&self) -> RequestPartsRef<'_> {
+    pub fn as_ref(&mut self) -> RequestPartsRef<'_> {
         RequestPartsRef {
             method: self.method,
             uri: &self.uri,
             version: self.version,
             headers: &self.headers,
+            extensions: &self.extensions,
         }
     }
 }
@@ -165,16 +166,20 @@ pub struct RequestPartsRef<'a> {
 
     /// The request's headers. All headers are always lowercased.
     pub headers: &'a HeaderMap,
+
+    /// The request's extensions.
+    pub extensions: &'a Extensions,
 }
 
 impl Request {
-    pub fn parts(&mut self) -> (RequestPartsRef<'_>, &mut Extensions) {
-        (RequestPartsRef {
+    pub fn parts(&mut self) -> RequestPartsRef<'_> {
+        RequestPartsRef {
             method: self.method,
             uri: &self.uri,
             version: self.version,
             headers: &self.headers,
-        }, &mut self.extensions)
+            extensions: &self.extensions,
+        }
     }
 
     /// Creates a new builder-style object to manufacture a `Request`
@@ -648,7 +653,7 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn header<K, V>(self, name: impl AsRef<str>, value: impl Into<String>) -> Builder {
+    pub fn header(self, name: impl AsRef<str>, value: impl Into<String>) -> Builder {
         self.and_then(move |mut head| {
             head.headers.insert(name, value);
             Ok(head)
@@ -714,7 +719,7 @@ impl Builder {
     where
         T: Any + Send + Sync + 'static,
     {
-        self.and_then(move |mut head| {
+        self.and_then(move |head| {
             head.extensions.insert(extension);
             Ok(head)
         })

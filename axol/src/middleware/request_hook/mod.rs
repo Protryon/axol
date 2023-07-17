@@ -46,9 +46,8 @@ macro_rules! impl_handler {
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
         {
             async fn handle_request(&self, request: &mut Request) -> Result<Option<Response>> {
-                let (parts, extensions) = request.parts();
                 $(
-                    let $ty = $ty::from_request_parts(parts, extensions).await?;
+                    let $ty = $ty::from_request_parts(request.parts()).await?;
                 )*
 
                 let res = self($($ty,)* request).await?;

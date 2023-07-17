@@ -128,9 +128,7 @@ where
         }
         let body = std::mem::take(&mut request.body);
 
-        let (parts, extensions) = request.parts();
-
-        observed.route.call(parts, extensions, body).await
+        observed.route.call(request.parts(), body).await
     }
 
     async fn handle_error(
@@ -138,9 +136,8 @@ where
         request: &mut Request,
         mut error: Error,
     ) -> Response {
-        let (parts, extensions) = request.parts();
         for middleware in &observed.error_hooks {
-            match middleware.handle_error(parts, extensions, &mut error).await {
+            match middleware.handle_error(request.parts(), &mut error).await {
                 Ok(Some(x)) => return x,
                 Ok(None) => (),
                 Err(e) => {
@@ -149,7 +146,7 @@ where
             }
         }
         DefaultErrorHook
-            .handle_error(parts, extensions, &mut error)
+            .handle_error(request.parts(), &mut error)
             .await
             .unwrap()
             .unwrap()
@@ -160,10 +157,9 @@ where
         request: &mut Request,
         mut response: Response,
     ) -> Response {
-        let (parts, extensions) = request.parts();
         for middleware in &observed.early_response_hooks {
             match middleware
-                .handle_response(parts, extensions, &mut response)
+                .handle_response(request.parts(), &mut response)
                 .await
             {
                 Ok(()) => (),
@@ -180,9 +176,8 @@ where
         request: &mut Request,
         response: &mut Response,
     ) {
-        let (parts, extensions) = request.parts();
         for middleware in &observed.late_response_hooks {
-            middleware.handle_response(parts, extensions, response).await;
+            middleware.handle_response(request.parts(), response).await;
         }
     }
 
@@ -203,7 +198,7 @@ where
                 .headers
                 .try_into()
                 .map_err(|e: HeaderMapConvertError| Error::unprocessable_entity(e.to_string()))?,
-            extensions: parts.extensions,
+            extensions: parts.extensions.into(),
             body: Body::Stream {
                 size_hint: Some(<HyperBody as HttpBody>::size_hint(&body).lower() as usize),
                 stream: Box::pin(BodyInputStream {
@@ -261,7 +256,8 @@ where
             .status(status)
             .version(response.version);
         *builder.headers_mut().unwrap() = response.headers.into();
-        *builder.extensions_mut().unwrap() = response.extensions;
+        //TODO: due to limitations in converting Arc <-> Box for unsized types, we can't pass extensions back atm
+        *builder.extensions_mut().unwrap() = Default::default();
         let body: HyperBody = match response.body {
             Body::Bytes(bytes) => bytes.into(),
             Body::Stream { size_hint, stream } => {

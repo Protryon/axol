@@ -1,4 +1,4 @@
-use axol_http::{request::RequestPartsRef, response::Response, Extensions};
+use axol_http::{request::RequestPartsRef, response::Response};
 use futures::Future;
 
 use crate::{Error, FromRequestParts, IntoResponse, Result};
@@ -14,7 +14,6 @@ pub trait ErrorHook: Send + Sync + 'static {
     async fn handle_error<'a>(
         &self,
         request: RequestPartsRef<'a>,
-        request_extensions: &mut Extensions,
         error: &mut Error,
     ) -> Result<Option<Response>>;
 }
@@ -29,7 +28,6 @@ where
     async fn handle_error<'a>(
         &self,
         _request: RequestPartsRef<'a>,
-        _request_extensions: &mut Extensions,
         _error: &mut Error,
     ) -> Result<Option<Response>> {
         self().await?.map(IntoResponse::into_response).transpose()
@@ -41,7 +39,6 @@ pub trait ErrorHookExpansion<G>: Send + Sync + 'static {
     async fn handle_error<'a>(
         &self,
         request: RequestPartsRef<'a>,
-        request_extensions: &mut Extensions,
         error: &mut Error,
     ) -> Result<Option<Response>>;
 }
@@ -51,10 +48,9 @@ impl<G: 'static> ErrorHook for Box<dyn ErrorHookExpansion<G>> {
     async fn handle_error<'a>(
         &self,
         request: RequestPartsRef<'a>,
-        request_extensions: &mut Extensions,
         error: &mut Error,
     ) -> Result<Option<Response>> {
-        (&**self).handle_error(request, request_extensions, error).await
+        (&**self).handle_error(request, error).await
     }
 }
 
@@ -68,9 +64,9 @@ macro_rules! impl_handler {
             Res: IntoResponse,
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
         {
-            async fn handle_error<'a>(&self, request: RequestPartsRef<'a>, request_extensions: &mut Extensions, error: &mut Error) -> Result<Option<Response>> {
+            async fn handle_error<'a>(&self, request: RequestPartsRef<'a>, error: &mut Error) -> Result<Option<Response>> {
                 $(
-                    let $ty = $ty::from_request_parts(request, request_extensions).await?;
+                    let $ty = $ty::from_request_parts(request).await?;
                 )*
 
                 let res = self($($ty,)* error).await?;
