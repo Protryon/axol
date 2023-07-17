@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{EarlyResponseHook, Error, ErrorHook, Handler, LateResponseHook, RequestHook, Result};
+use crate::{
+    EarlyResponseHook, Error, ErrorHook, Handler, HandlerExpansion, LateResponseHook, Plugin,
+    RequestHook, Result,
+};
 use axol_http::{response::Response, Method};
 use log::warn;
 
@@ -62,16 +65,21 @@ async fn default_route() -> Result<Response> {
 }
 
 lazy_static::lazy_static! {
-    static ref DEFAULT_ROUTE: Arc<dyn Handler> = Arc::new(default_route);
+    static ref DEFAULT_ROUTE: Arc<dyn Handler> = {
+        let route: Box<dyn HandlerExpansion<()>> = Box::new(default_route);
+        let handler: Arc<dyn Handler> = Arc::new(route);
+        handler
+    };
 }
 
 pub struct ObservedRoute<'a> {
     pub route: &'a Route,
     pub variables: PathVariables,
-    pub request_hooks: Vec<&'a dyn RequestHook>,
-    pub error_hooks: Vec<&'a dyn ErrorHook>,
-    pub early_response_hooks: Vec<&'a dyn EarlyResponseHook>,
-    pub late_response_hooks: Vec<&'a dyn LateResponseHook>,
+    //TODO: clean these up to not clone arcs
+    pub request_hooks: Vec<Arc<dyn RequestHook>>,
+    pub error_hooks: Vec<Arc<dyn ErrorHook>>,
+    pub early_response_hooks: Vec<Arc<dyn EarlyResponseHook>>,
+    pub late_response_hooks: Vec<Arc<dyn LateResponseHook>>,
 }
 
 impl<'a> ObservedRoute<'a> {
@@ -123,12 +131,24 @@ impl Router {
         out
     }
 
-    fn do_resolve_path(
+    fn do_resolve_path<'a>(
         &self,
         observed: &mut ObservedRoute<'_>,
         method: Method,
         segments: &[&str],
     ) -> Option<&Route> {
+        observed
+            .request_hooks
+            .extend(self.request_hooks.iter().cloned());
+        observed
+            .error_hooks
+            .extend(self.error_hooks.iter().cloned());
+        observed
+            .late_response_hooks
+            .extend(self.late_response_hooks.iter().cloned());
+        observed
+            .early_response_hooks
+            .extend(self.early_response_hooks.iter().cloned());
         let Some(segment) = segments.first() else {
             if let Some((_, route)) = self.methods.iter().find(|x| x.0 == method) {
                 return Some(route);
@@ -225,50 +245,57 @@ impl Router {
         }
     }
 
-    pub fn method(mut self, path: &str, method: Method, route: impl Handler) -> Self {
+    pub fn method<G: 'static>(
+        mut self,
+        path: &str,
+        method: Method,
+        route: impl HandlerExpansion<G>,
+    ) -> Self {
+        let route: Box<dyn HandlerExpansion<G>> = Box::new(route);
         let handler: Arc<dyn Handler> = Arc::new(route);
         self.append_segment(split_path_reverse(path), method, handler);
         self
     }
 
-    pub fn get(self, path: &str, route: impl Handler) -> Self {
+    pub fn get<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Get, route)
     }
 
-    pub fn post(self, path: &str, route: impl Handler) -> Self {
+    pub fn post<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Post, route)
     }
 
-    pub fn put(self, path: &str, route: impl Handler) -> Self {
+    pub fn put<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Put, route)
     }
 
-    pub fn delete(self, path: &str, route: impl Handler) -> Self {
+    pub fn delete<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Delete, route)
     }
 
-    pub fn head(self, path: &str, route: impl Handler) -> Self {
+    pub fn head<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Head, route)
     }
 
-    pub fn options(self, path: &str, route: impl Handler) -> Self {
+    pub fn options<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Options, route)
     }
 
-    pub fn connect(self, path: &str, route: impl Handler) -> Self {
+    pub fn connect<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Connect, route)
     }
 
-    pub fn patch(self, path: &str, route: impl Handler) -> Self {
+    pub fn patch<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Patch, route)
     }
 
-    pub fn trace(self, path: &str, route: impl Handler) -> Self {
+    pub fn trace<G: 'static>(self, path: &str, route: impl HandlerExpansion<G>) -> Self {
         self.method(path, Method::Trace, route)
     }
 
-    pub fn fallback(mut self, path: &str, fallback: impl Handler) -> Self {
+    pub fn fallback<G: 'static>(mut self, path: &str, fallback: impl HandlerExpansion<G>) -> Self {
         let segments = split_path_reverse(path);
+        let fallback: Box<dyn HandlerExpansion<G>> = Box::new(fallback);
         let handler: Arc<dyn Handler> = Arc::new(fallback);
         let target = self.resolve_segments_mut(segments);
         if let Some(fallback) = target.fallback.as_mut() {
@@ -310,6 +337,10 @@ impl Router {
         let target = self.resolve_segments_mut(segments);
         target.late_response_hooks.push(hook);
         self
+    }
+
+    pub fn plugin(self, path: &str, hook: impl Plugin) -> Self {
+        hook.apply(self, path)
     }
 
     pub fn nest(mut self, path: &str, router: Router) -> Self {

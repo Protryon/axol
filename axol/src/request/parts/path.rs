@@ -1,18 +1,18 @@
 use std::{ops::Deref, sync::Arc};
 
-use axol_http::{request::RequestPartsRef};
-use serde::de::DeserializeOwned;
+use axol_http::{request::RequestPartsRef, Body};
+use serde::{de::DeserializeOwned, Deserialize};
 
-use crate::{Error, FromRequestParts, Result};
+use crate::{Error, FromRequest, FromRequestParts, Result};
 
 use super::path_de::{self, PathDeserializationError};
 
 pub struct RawPathExt(pub Vec<(Arc<str>, String)>);
 
 #[derive(Debug, Clone)]
-pub struct RawPath(pub Vec<(Arc<str>, String)>);
+pub struct RawPath<'a>(pub &'a [(Arc<str>, String)]);
 
-impl Deref for RawPath {
+impl<'a> Deref for RawPath<'a> {
     type Target = [(Arc<str>, String)];
 
     fn deref(&self) -> &Self::Target {
@@ -21,12 +21,19 @@ impl Deref for RawPath {
 }
 
 #[async_trait::async_trait]
-impl<'a> FromRequestParts<'a> for RawPath {
+impl<'a> FromRequestParts<'a> for RawPath<'a> {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         match request.extensions.get::<RawPathExt>() {
-            Some(values) => Ok(Self(values.0.clone())),
-            None => Ok(Self(vec![])),
+            Some(values) => Ok(Self(&values.0[..])),
+            None => Ok(Self(&[])),
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for RawPath<'a> {
+    async fn from_request(request: RequestPartsRef<'a>, _body: Body) -> Result<Self> {
+        <Self as FromRequestParts<'a>>::from_request_parts(request).await
     }
 }
 
@@ -42,10 +49,10 @@ impl<T> Deref for Path<T> {
 }
 
 #[async_trait::async_trait]
-// since it's from extensions, it must be DeserializeOwned
-impl<'a, T: DeserializeOwned + Send + Sync + 'a> FromRequestParts<'a> for Path<T> {
+impl<'a, T: Deserialize<'a> + Send + Sync + 'a> FromRequestParts<'a> for Path<T> {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
-        let params = request.extensions
+        let params = request
+            .extensions
             .get::<RawPathExt>()
             .ok_or_else(|| Error::internal(anyhow::anyhow!("missing RawPathExt extension")))?;
         T::deserialize(path_de::PathDeserializer::new(&params.0))
@@ -60,5 +67,12 @@ impl<'a, T: DeserializeOwned + Send + Sync + 'a> FromRequestParts<'a> for Path<T
                 | PathDeserializationError::UnsupportedType { .. } => Error::internal(err),
             })
             .map(Path)
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a, T: DeserializeOwned + Send + Sync + 'a> FromRequest<'a> for Path<T> {
+    async fn from_request(request: RequestPartsRef<'a>, _body: Body) -> Result<Self> {
+        <Self as FromRequestParts<'a>>::from_request_parts(request).await
     }
 }

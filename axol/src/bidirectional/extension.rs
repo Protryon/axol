@@ -12,9 +12,13 @@ pub struct Extension<T>(pub T);
 #[async_trait::async_trait]
 impl<'a, T: Send + Sync + Clone + 'static> FromRequestParts<'a> for Extension<T> {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
-        Ok(Self(request.extensions.get::<T>().ok_or_else(|| {
-            Error::internal(anyhow!("missing request extension"))
-        })?.clone()))
+        Ok(Self(
+            request
+                .extensions
+                .get::<T>()
+                .ok_or_else(|| Error::internal(anyhow!("missing request extension")))?
+                .clone(),
+        ))
     }
 }
 

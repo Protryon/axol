@@ -53,7 +53,7 @@ impl Extensions {
 
     /// Gets a reference to an extension value.
     /// This will invalidate that value from ever being manually removed.
-    pub fn get<T: Send + Sync + 'static>(&self) -> Option<&T> {
+    pub fn get<'a, T: Send + Sync + 'static>(&'a self) -> Option<&'a T> {
         let mut inner = self.inner.lock().unwrap();
         let index = inner.map.get_mut(&TypeId::of::<T>())?;
         index.ever_fetched = true;
@@ -62,7 +62,7 @@ impl Extensions {
         // Furthermore, we prevent calling `remove` unless a value has **never** been "get"ted before.
         // ... look, I really want to be able to reference this data and remove elements. I know it's overkill.
         let value: &T = (&**inner.values.get(index)?.as_ref()?).downcast_ref()?;
-        Some(unsafe { std::mem::transmute(&value) })
+        Some(unsafe { std::mem::transmute(value) })
     }
 
     /// Gets a reference to an extension value.

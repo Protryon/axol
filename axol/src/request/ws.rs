@@ -5,19 +5,24 @@ use crate::Error;
 use super::FromRequestParts;
 use crate::Result;
 use async_trait::async_trait;
-use axol_http::{request::RequestPartsRef, response::Response, Method, StatusCode, extensions::Removed};
+use axol_http::{
+    extensions::Removed, request::RequestPartsRef, response::Response, Method, StatusCode,
+};
 use futures_util::{
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt},
 };
 use hyper::upgrade::{OnUpgrade, Upgraded};
+pub use hyper::Error as HyperError;
 use sha1::{Digest, Sha1};
 use std::{
     borrow::Cow,
     future::Future,
     pin::Pin,
-    task::{Context, Poll}, str::Utf8Error,
+    str::Utf8Error,
+    task::{Context, Poll},
 };
+pub use tokio_tungstenite::tungstenite::Error as WsError;
 use tokio_tungstenite::{
     tungstenite::{
         self as ts,
@@ -25,8 +30,6 @@ use tokio_tungstenite::{
     },
     WebSocketStream,
 };
-pub use tokio_tungstenite::tungstenite::Error as WsError;
-pub use hyper::Error as HyperError;
 
 /// Extractor for establishing WebSocket connections.
 ///
@@ -294,7 +297,7 @@ impl<'a> FromRequestParts<'a> for WebSocketUpgrade<DefaultOnFailedUpgrade> {
                     StatusCode::UpgradeRequired,
                     "WebSocket request couldn't be upgraded since no upgrade state was available",
                 )));
-            },
+            }
             Removed::Removed(x) => x,
         };
 
@@ -333,9 +336,7 @@ impl WebSocket {
 
     /// Send a message.
     pub async fn send(&mut self, msg: Message) -> Result<(), WsError> {
-        self.inner
-            .send(msg.into_tungstenite())
-            .await
+        self.inner.send(msg.into_tungstenite()).await
     }
 
     /// Gracefully close this WebSocket.
@@ -375,8 +376,7 @@ impl Sink<Message> for WebSocket {
     }
 
     fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
-        Pin::new(&mut self.inner)
-            .start_send(item.into_tungstenite())
+        Pin::new(&mut self.inner).start_send(item.into_tungstenite())
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -494,8 +494,9 @@ impl Message {
     pub fn into_text(self) -> Result<String, Utf8Error> {
         match self {
             Self::Text(string) => Ok(string),
-            Self::Binary(data) | Self::Ping(data) | Self::Pong(data) => String::from_utf8(data)
-                .map_err(|err| err.utf8_error()),
+            Self::Binary(data) | Self::Ping(data) | Self::Pong(data) => {
+                String::from_utf8(data).map_err(|err| err.utf8_error())
+            }
             Self::Close(None) => Ok(String::new()),
             Self::Close(Some(frame)) => Ok(frame.reason.into_owned()),
         }

@@ -6,10 +6,19 @@ use axol_http::{
 };
 use log::Level;
 
-use crate::{ConnectInfo, LateResponseHook, RequestHook, Result};
+use crate::{ConnectInfo, LateResponseHook, Plugin, RequestHook, Result, Router};
 
+#[derive(Clone)]
 pub struct Logger {
     pub default_log_level: Level,
+}
+
+impl Default for Logger {
+    fn default() -> Self {
+        Logger {
+            default_log_level: Level::Info,
+        }
+    }
 }
 
 struct LogInfo {
@@ -19,6 +28,7 @@ struct LogInfo {
 #[async_trait::async_trait]
 impl RequestHook for Logger {
     async fn handle_request(&self, request: &mut Request) -> Result<Option<Response>> {
+        println!("logger req");
         request.extensions.insert(LogInfo {
             start: Instant::now(),
         });
@@ -55,5 +65,13 @@ impl LateResponseHook for Logger {
             response.status,
             elapsed.as_secs_f64() * 1000.0
         );
+    }
+}
+
+impl Plugin for Logger {
+    fn apply(&self, router: Router, path: &str) -> Router {
+        router
+            .request_hook(path, self.clone())
+            .late_response_hook(path, self.clone())
     }
 }

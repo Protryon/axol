@@ -8,18 +8,6 @@ pub trait Handler: Send + Sync + 'static {
 }
 
 #[async_trait::async_trait]
-impl<F, Fut, Res> Handler for F
-where
-    F: Fn() -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Res> + Send,
-    Res: IntoResponse,
-{
-    async fn call<'a>(&self, _request_parts: RequestPartsRef<'a>, _body: Body) -> Result<Response> {
-        self().await.into_response()
-    }
-}
-
-#[async_trait::async_trait]
 pub trait HandlerExpansion<G>: Send + Sync + 'static {
     async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, body: Body) -> Result<Response>;
 }
@@ -28,6 +16,18 @@ pub trait HandlerExpansion<G>: Send + Sync + 'static {
 impl<G: 'static> Handler for Box<dyn HandlerExpansion<G>> {
     async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, body: Body) -> Result<Response> {
         (&**self).call(request_parts, body).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<F, Fut, Res> HandlerExpansion<()> for F
+where
+    F: Fn() -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Res> + Send,
+    Res: IntoResponse,
+{
+    async fn call<'a>(&self, _request_parts: RequestPartsRef<'a>, _body: Body) -> Result<Response> {
+        self().await.into_response()
     }
 }
 

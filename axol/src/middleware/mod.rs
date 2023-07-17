@@ -9,3 +9,9 @@ pub use error_hook::*;
 
 mod multi;
 pub use multi::*;
+
+use crate::Router;
+
+pub trait Plugin {
+    fn apply(&self, router: Router, path: &str) -> Router;
+}
