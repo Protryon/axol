@@ -1,18 +1,20 @@
+use std::borrow::Cow;
+
 use axol::{Logger, Path, Router, Server};
 
 async fn index() -> &'static str {
     "hello world"
 }
 
-async fn var_page(Path(var): Path<String>) -> String {
+async fn var_page(Path(var): Path<Cow<'_, str>>) -> String {
     format!("hello {var}")
 }
 
 fn route() -> Router {
     Router::new()
+        .plugin("/", Logger::default())
         .get("/", index)
         .get("/:var", var_page)
-        .plugin("/", Logger::default())
 }
 
 #[tokio::main]
