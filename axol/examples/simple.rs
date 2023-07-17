@@ -28,8 +28,6 @@ async fn main() {
     Server::bind("127.0.0.1:9081".parse().unwrap())
         .unwrap()
         .router(router)
-        .build()
-        .unwrap()
         .serve()
         .await
         .unwrap();

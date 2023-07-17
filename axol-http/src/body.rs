@@ -1,7 +1,8 @@
-use std::{fmt, pin::Pin};
+use std::{fmt, pin::Pin, task::{Context, Poll}};
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt, TryStreamExt};
+use http_body::SizeHint;
 
 use crate::header::HeaderMap;
 
@@ -14,13 +15,39 @@ pub enum BodyComponent {
 //TODO: docs
 pub enum Body {
     Bytes(Vec<u8>),
-    //TODO: do we really want to use std::io::Error here?
     Stream {
         size_hint: Option<usize>,
         stream: Pin<
             Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>,
         >,
     },
+}
+
+/// Wrapper over `Body` that implements `http_body::Body`
+pub struct BodyWrapper {
+    body: Body,
+    has_written_blob: bool,
+    bytes_streamed: usize,
+    pending_trailers: Option<HeaderMap>,
+    eof: bool,
+}
+
+impl From<Body> for BodyWrapper {
+    fn from(body: Body) -> Self {
+        Self {
+            body,
+            has_written_blob: false,
+            bytes_streamed: 0,
+            pending_trailers: None,
+            eof: false,
+        }
+    }
+}
+
+impl Into<Body> for BodyWrapper {
+    fn into(self) -> Body {
+        self.body
+    }
 }
 
 impl Body {
@@ -118,5 +145,76 @@ impl fmt::Debug for Body {
 impl Default for Body {
     fn default() -> Self {
         Body::Bytes(vec![])
+    }
+}
+
+impl http_body::Body for BodyWrapper {
+    type Data = Bytes;
+
+    type Error = anyhow::Error;
+
+    fn poll_data(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        match &mut self.body {
+            Body::Bytes(bytes) => {
+                let bytes = std::mem::take(bytes);
+                if self.has_written_blob {
+                    return Poll::Ready(None);
+                }
+                self.eof = true;
+                self.has_written_blob = true;
+                Poll::Ready(Some(Ok(bytes.into())))
+            },
+            Body::Stream { size_hint: _, stream } => {
+                match stream.poll_next_unpin(cx) {
+                    Poll::Pending => Poll::Pending,
+                    Poll::Ready(None) => {
+                        self.eof = true;
+                        Poll::Ready(None)
+                    },
+                    Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+                    Poll::Ready(Some(Ok(BodyComponent::Data(data)))) => {
+                        self.bytes_streamed += data.len();
+                        Poll::Ready(Some(Ok(data)))
+                    },
+                    Poll::Ready(Some(Ok(BodyComponent::Trailers(trailers)))) => {
+                        self.pending_trailers = Some(trailers);
+                        Poll::Ready(None)
+                    },
+                }
+            }
+        }
+    }
+
+    fn poll_trailers(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<headers::HeaderMap>, Self::Error>> {
+        self.eof = true;
+        if let Some(pending_trailers) = self.pending_trailers.take() {
+            Poll::Ready(Ok(Some(pending_trailers.into())))
+        } else {
+            Poll::Ready(Ok(None))
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.eof
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        if self.eof {
+            return SizeHint::with_exact(0);
+        }
+        match &self.body {
+            Body::Bytes(bytes) => {
+                SizeHint::with_exact(bytes.len() as u64)
+            },
+            Body::Stream { size_hint, stream: _ } => {
+                size_hint.map(|x| SizeHint::with_exact(x as u64)).unwrap_or_default()
+            }
+        }
     }
 }

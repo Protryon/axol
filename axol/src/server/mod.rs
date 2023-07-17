@@ -5,12 +5,12 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
 use crate::Result;
 use crate::{ConnectInfo, DefaultErrorHook, Error, ErrorHook, ObservedRoute, RawPathExt};
-use axol_http::body::BodyComponent;
+use axol_http::body::{BodyComponent, BodyWrapper};
 use axol_http::header::HeaderMapConvertError;
 use axol_http::{request::Request, response::Response};
 use axol_http::{Body, Method};
 use derive_builder::Builder;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use hyper::body::HttpBody;
 use hyper::server::accept::Accept;
 use hyper::server::conn::AddrIncoming;
@@ -35,6 +35,23 @@ impl ServerBuilder<AddrIncoming> {
     pub fn bind(mut self, addr: SocketAddr) -> Result<Self, HyperError> {
         self.incoming = Some(AddrIncoming::bind(&addr)?);
         Ok(self)
+    }
+}
+
+impl<I: Accept + 'static> ServerBuilder<I>
+where
+    I::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    I::Conn: AsyncRead + AsyncWrite + RemoteSocket + Unpin + Send + 'static,
+{
+    pub async fn serve(self) -> Result<(), hyper::Error> {
+        self.serve_custom(|x| x).await
+    }
+
+    pub async fn serve_custom(
+        self,
+        customize: impl FnOnce(Builder<I>) -> Builder<I>,
+    ) -> Result<(), hyper::Error> {
+        self.build().unwrap().serve_custom(customize).await
     }
 }
 
@@ -113,7 +130,6 @@ impl RemoteSocket for AddrStream {
 
 impl<I: Accept + 'static> Server<I>
 where
-    I: Accept,
     I::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     I::Conn: AsyncRead + AsyncWrite + RemoteSocket + Unpin + Send + 'static,
 {
@@ -245,7 +261,7 @@ where
         router: Arc<Router>,
         address: SocketAddr,
         request: HyperRequest<HyperBody>,
-    ) -> Result<HyperResponse<HyperBody>, Infallible> {
+    ) -> Result<HyperResponse<BodyWrapper>, Infallible> {
         let response = match Self::do_handle_axol_response(router, address, request).await {
             Ok(x) => x,
             Err(e) => e.into_response(),
@@ -258,21 +274,9 @@ where
         *builder.headers_mut().unwrap() = response.headers.into();
         //TODO: due to limitations in converting Arc <-> Box for unsized types, we can't pass extensions back atm
         *builder.extensions_mut().unwrap() = Default::default();
-        let body: HyperBody = match response.body {
-            Body::Bytes(bytes) => bytes.into(),
-            Body::Stream { size_hint, stream } => {
-                //TODO: we need a custom hyper body type to allow passing size_hint AND trailers
-                fn x() {}
-                HyperBody::wrap_stream(stream.map(|x| match x {
-                    Ok(BodyComponent::Data(data)) => Ok(data),
-                    Ok(BodyComponent::Trailers(_)) => {
-                        unimplemented!("outbound trailers not supported")
-                    }
-                    Err(e) => Err(e),
-                }))
-            }
-        };
-        Ok(builder.body(body).expect("body conversion failed"))
+        Ok(builder
+            .body(response.body.into())
+            .expect("body conversion failed"))
     }
 
     pub async fn serve(self) -> Result<(), hyper::Error> {
