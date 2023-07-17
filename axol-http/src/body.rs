@@ -79,6 +79,13 @@ impl Body {
             }
         }
     }
+
+    pub fn into_stream(self) -> Pin<Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>> {
+        match self {
+            Body::Bytes(bytes) => Box::pin(futures::stream::once(async move { Ok(BodyComponent::Data(bytes.into())) })),
+            Body::Stream { size_hint: _, stream } => stream,
+        }
+    }
 }
 
 impl Into<Body> for Vec<u8> {

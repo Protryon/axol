@@ -25,6 +25,7 @@ derive_builder = "0.12"
 pin-project-lite = "0.2.10"
 percent-encoding = "2.3"
 strum = { version = "0.25", features = ["derive"] }
+bytes = "1.4"
 
 base64 = { version = "0.21.0", optional = true }
 sha1 = { version = "0.10", optional = true }
@@ -34,11 +35,14 @@ rustls = { version = "0.20", optional = true }
 tokio-rustls = { version = "0.23", optional = true }
 tokio-stream = { version = "0.1", optional = true }
 
+multer = { version = "2.1", optional = true }
+
 [dev-dependencies]
 env_logger = "0.10.0"
 tokio = { version = "1.25.0", features = ["full"] }
 
 [features]
-default = ["ws", "tls"]
+default = ["ws", "tls", "multipart"]
 ws = ["tokio-tungstenite", "sha1", "base64"]
 tls = ["rustls", "tokio-rustls", "tokio-stream"]
+multipart = ["multer"]
