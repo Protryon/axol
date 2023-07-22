@@ -67,7 +67,7 @@ impl Stream for TraceBody {
                 self.body_size += data.len();
             }
             Ok(BodyComponent::Trailers(trailers)) => {
-                tracing::event!(Level::TRACE, ?trailers, "body trailers");
+                tracing::event!(Level::DEBUG, ?trailers, "body trailers");
             }
             Err(err) => {
                 tracing::event!(Level::ERROR, ?err, "body error");

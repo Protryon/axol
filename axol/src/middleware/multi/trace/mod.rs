@@ -55,7 +55,7 @@ fn make_span(request: RequestPartsRef<'_>) -> Span {
     let scheme = request.uri.scheme().map(|x| x.as_str());
     let route = request.extensions.get::<MatchedPath>().map(|x| &**x.0);
     let name = format!("{} {}", request.method, route.unwrap_or_default());
-    let span = tracing::trace_span!(
+    let span = tracing::info_span!(
         target: "otel::tracing",
         "HTTP request",
         http.request.method = %request.method,
