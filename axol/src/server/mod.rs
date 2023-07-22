@@ -23,6 +23,7 @@ use hyper::{
 use log::error;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
+#[cfg(feature = "trace")]
 use tracing::Instrument;
 
 use crate::Router;
@@ -303,7 +304,7 @@ where
         #[cfg(feature = "tracing")]
         let remote = address;
         #[cfg(feature = "tracing")]
-        let span = tracing::span!(tracing::Level::INFO, "handle request", %remote, %request.uri);
+        let span = tracing::trace_span!("axol_http", %remote, %request.uri);
 
         // we are not passing any interior mutability or mutability into the catch_unwind.
         // (that isn't dropped inside if a panic occurs)
