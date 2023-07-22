@@ -10,13 +10,16 @@ use axol_http::{
 };
 use opentelemetry::{Key, StringValue, Value};
 use tracing::{field::Empty, Instrument, Level, Span};
-use tracing_subscriber::registry::{Data, LookupSpan, SpanData};
+use tracing_subscriber::registry::{LookupSpan, SpanData};
 
 use crate::{
     trace::body::TraceBody, ConnectInfo, Error, LateResponseHook, MatchedPath, Plugin, RequestHook,
     Result, Router, Wrap, WrapState,
 };
 use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData};
+
+mod registry;
+pub use registry::RegistryWrapper;
 
 struct TraceInfo {
     span: Span,
@@ -28,6 +31,7 @@ pub struct Trace {
         Arc<dyn for<'a> Fn(&str, &'a str) -> Option<Cow<'a, str>> + Send + Sync + 'static>,
     pub response_header_filter:
         Arc<dyn for<'a> Fn(&str, &'a str) -> Option<Cow<'a, str>> + Send + Sync + 'static>,
+    pub registry: Option<RegistryWrapper>,
 }
 
 pub fn default_request_header_filter<'a>(name: &str, value: &'a str) -> Option<Cow<'a, str>> {
@@ -59,6 +63,7 @@ impl Default for Trace {
         Self {
             request_header_filter: Arc::new(default_request_header_filter),
             response_header_filter: Arc::new(default_response_header_filter),
+            registry: None,
         }
     }
 }
@@ -77,6 +82,12 @@ impl Trace {
         for<'a> F: Fn(&str, &'a str) -> Option<Cow<'a, str>> + Send + Sync + 'static,
     {
         self.request_header_filter = Arc::new(func);
+        self
+    }
+    
+    /// Sets the registry wrapper, needed to set HTTP request/response headers on traces
+    pub fn registry(mut self, registry: RegistryWrapper) -> Self {
+        self.registry = Some(registry);
         self
     }
 }
@@ -137,35 +148,27 @@ impl Trace {
             http.request.body.elapsed_ms = Empty,
             http.response.body.elapsed_ms = Empty,
         );
-        if let Some(span_id) = span.id() {
-            tracing::dispatcher::get_default(|dispatch| {
-                println!("got dispatch {span_id:?}");
-                if let Some(lookup) = dispatch.downcast_ref::<&dyn LookupSpan<Data = Data<'_>>>() {
-                    println!("got lookup");
-                    let span = lookup.span_data(&span_id).expect("missing span");
-                    let mut extensions = span.extensions_mut();
-                    if let Some(data) = extensions.get_mut::<OtelData>() {
-                        println!("got otel data");
-                        let target = data.builder.attributes.as_mut().unwrap();
-                        for (name, values) in request.headers.grouped() {
-                            let values: Vec<StringValue> = values
-                                .into_iter()
-                                .filter_map(|value| (self.request_header_filter)(name, value))
-                                .map(|x| StringValue::from(x.to_string()))
-                                .collect::<Vec<_>>();
-                            if values.is_empty() {
-                                continue;
-                            }
-                            println!("push header {name}");
-                            //todo: use static header values?
-                            target.insert(
-                                Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
-                                Value::Array(values.into()),
-                            );
-                        }
+        if let (Some(span_id), Some(registry)) = (span.id(), self.registry.as_ref()) {
+            let span = registry.span_data(&span_id).expect("missing span");
+            let mut extensions = span.extensions_mut();
+            if let Some(data) = extensions.get_mut::<OtelData>() {
+                let target = data.builder.attributes.as_mut().unwrap();
+                for (name, values) in request.headers.grouped() {
+                    let values: Vec<StringValue> = values
+                        .into_iter()
+                        .filter_map(|value| (self.request_header_filter)(name, value))
+                        .map(|x| StringValue::from(x.to_string()))
+                        .collect::<Vec<_>>();
+                    if values.is_empty() {
+                        continue;
                     }
+                    //todo: use static header values?
+                    target.insert(
+                        Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
+                        Value::Array(values.into()),
+                    );
                 }
-            });
+            }
         }
         span.set_parent(opentelemetry_api::global::get_text_map_propagator(
             |propagator| propagator.extract(&request.headers),
@@ -245,35 +248,31 @@ impl LateResponseHook for Trace {
             info.span.record("otel.status_code", "OK");
         }
 
-        if let Some(span_id) = info.span.id() {
-            tracing::dispatcher::get_default(|dispatch| {
-                if let Some(lookup) = dispatch.downcast_ref::<&dyn LookupSpan<Data = Data<'_>>>() {
-                    let span = lookup.span_data(&span_id).expect("missing span");
-                    let mut extensions = span.extensions_mut();
-                    if let Some(data) = extensions.get_mut::<OtelData>() {
-                        let target = data.builder.attributes.as_mut().unwrap();
-                        for (name, values) in response.headers.grouped() {
-                            let values: Vec<StringValue> = values
-                                .into_iter()
-                                .filter_map(|value| (self.response_header_filter)(name, value))
-                                .map(|x| StringValue::from(x.to_string()))
-                                .collect::<Vec<_>>();
-                            if values.is_empty() {
-                                continue;
-                            }
-
-                            //todo: use static header values?
-                            target.insert(
-                                Key::new(format!(
-                                    "http.response.header.{}",
-                                    name.replace('-', "_")
-                                )),
-                                Value::Array(values.into()),
-                            );
-                        }
+        if let (Some(span_id), Some(registry)) = (info.span.id(), self.registry.as_ref()) {
+            let span = registry.span_data(&span_id).expect("missing span");
+            let mut extensions = span.extensions_mut();
+            if let Some(data) = extensions.get_mut::<OtelData>() {
+                let target = data.builder.attributes.as_mut().unwrap();
+                for (name, values) in response.headers.grouped() {
+                    let values: Vec<StringValue> = values
+                        .into_iter()
+                        .filter_map(|value| (self.response_header_filter)(name, value))
+                        .map(|x| StringValue::from(x.to_string()))
+                        .collect::<Vec<_>>();
+                    if values.is_empty() {
+                        continue;
                     }
+
+                    //todo: use static header values?
+                    target.insert(
+                        Key::new(format!(
+                            "http.response.header.{}",
+                            name.replace('-', "_")
+                        )),
+                        Value::Array(values.into()),
+                    );
                 }
-            });
+            }
         }
 
         response.body =
