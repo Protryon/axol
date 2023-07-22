@@ -1,6 +1,6 @@
 mod body;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 
 use anyhow::anyhow;
 use axol_http::{
@@ -8,6 +8,7 @@ use axol_http::{
     response::Response,
     Body, Version,
 };
+use opentelemetry::{Key, KeyValue, StringValue, Value};
 use tracing::{field::Empty, Instrument, Level, Span};
 
 use crate::{
@@ -21,11 +22,60 @@ struct TraceInfo {
 }
 
 #[derive(Clone)]
-pub struct Trace {}
+pub struct Trace {
+    pub request_header_filter:
+        Arc<dyn for<'a> Fn(&str, &'a str) -> Option<Cow<'a, str>> + Send + Sync + 'static>,
+    pub response_header_filter:
+        Arc<dyn for<'a> Fn(&str, &'a str) -> Option<Cow<'a, str>> + Send + Sync + 'static>,
+}
+
+pub fn default_request_header_filter<'a>(name: &str, value: &'a str) -> Option<Cow<'a, str>> {
+    match name {
+        "authorization" => Some(Cow::Borrowed("present")),
+        "cookie" => Some(Cow::Borrowed("present")),
+        _ => Some(Cow::Borrowed(value)),
+    }
+}
+
+pub fn default_response_header_filter<'a>(name: &str, value: &'a str) -> Option<Cow<'a, str>> {
+    match name {
+        "set-cookie" => Some(Cow::Borrowed("present")),
+        _ => Some(Cow::Borrowed(value)),
+    }
+}
+
+pub fn allow_all_header_filter<'a>(_name: &str, value: &'a str) -> Option<Cow<'a, str>> {
+    Some(Cow::Borrowed(value))
+}
+
+pub fn deny_all_header_filter<'a>(_name: &str, _value: &'a str) -> Option<Cow<'a, str>> {
+    None
+}
 
 impl Default for Trace {
     fn default() -> Self {
-        Self {}
+        Self {
+            request_header_filter: Arc::new(default_request_header_filter),
+            response_header_filter: Arc::new(default_response_header_filter),
+        }
+    }
+}
+
+impl Trace {
+    pub fn response_header_filter<F>(mut self, func: F) -> Self
+    where
+        for<'a> F: Fn(&str, &'a str) -> Option<Cow<'a, str>> + Send + Sync + 'static,
+    {
+        self.response_header_filter = Arc::new(func);
+        self
+    }
+
+    pub fn request_header_filter<F>(mut self, func: F) -> Self
+    where
+        for<'a> F: Fn(&str, &'a str) -> Option<Cow<'a, str>> + Send + Sync + 'static,
+    {
+        self.request_header_filter = Arc::new(func);
+        self
     }
 }
 
@@ -40,67 +90,84 @@ pub fn http_flavor(version: Version) -> Cow<'static, str> {
     }
 }
 
-fn make_span(request: RequestPartsRef<'_>) -> Span {
-    let host = request
-        .headers
-        .get("host")
-        .or(request.uri.host())
-        .unwrap_or_default();
-    let port = request.uri.port().map(|x| x.as_u16());
-    let connect_info = request
-        .extensions
-        .get::<ConnectInfo>()
-        .map(|x| x.0.ip().to_string());
-    let user_agent = request.headers.get("user-agent");
-    let scheme = request.uri.scheme().map(|x| x.as_str());
-    let route = request.extensions.get::<MatchedPath>().map(|x| &**x.0);
-    let name = format!("{} {}", request.method, route.unwrap_or_default());
-    let span = tracing::info_span!(
-        target: "otel::tracing",
-        "HTTP request",
-        http.request.method = %request.method,
-        http.route = route,
-        network.protocol.version = %http_flavor(request.version),
-        server.address = host,
-        server.port = port,
-        http.client.address = connect_info,
-        user_agent.original = user_agent,
-        url.path = request.uri.path(),
-        url.query = request.uri.query(),
-        url.scheme = scheme,
-        otel.name = name,
-        otel.kind = ?opentelemetry_api::trace::SpanKind::Server,
-        http.response.status_code = Empty, // to set on response
-        otel.status_code = Empty, // to set on response
-        trace_id = Empty, // to set on response
-        request_id = Empty, // to set
-        exception.message = Empty, // to set on response
-        rpc.system = Empty,
-        rpc.service = Empty,
-        rpc.method = Empty,
-        http.grpc_status = Empty,
-        http.request.body.size = Empty,
-        http.response.body.size = Empty,
-        http.request.body.elapsed_ms = Empty,
-        http.response.body.elapsed_ms = Empty,
-    );
-    span.in_scope(|| {
-        opentelemetry::trace::get_active_span(|span| {
-            for (name, value) in &request.headers {
-                // if span.set_attribute("http.request.")
-            }
-        })
-    });
-    span.set_parent(opentelemetry_api::global::get_text_map_propagator(
-        |propagator| propagator.extract(&request.headers),
-    ));
-    span
+impl Trace {
+    fn make_span(&self, request: RequestPartsRef<'_>) -> Span {
+        let host = request
+            .headers
+            .get("host")
+            .or(request.uri.host())
+            .unwrap_or_default();
+        let port = request.uri.port().map(|x| x.as_u16());
+        let connect_info = request
+            .extensions
+            .get::<ConnectInfo>()
+            .map(|x| x.0.ip().to_string());
+        let user_agent = request.headers.get("user-agent");
+        let scheme = request.uri.scheme().map(|x| x.as_str());
+        let route = request.extensions.get::<MatchedPath>().map(|x| &**x.0);
+        let name = format!("{} {}", request.method, route.unwrap_or_default());
+        let span = tracing::info_span!(
+            target: "otel::tracing",
+            "HTTP request",
+            http.request.method = %request.method,
+            http.route = route,
+            network.protocol.version = %http_flavor(request.version),
+            server.address = host,
+            server.port = port,
+            http.client.address = connect_info,
+            user_agent.original = user_agent,
+            url.path = request.uri.path(),
+            url.query = request.uri.query(),
+            url.scheme = scheme,
+            otel.name = name,
+            otel.kind = ?opentelemetry_api::trace::SpanKind::Server,
+            http.response.status_code = Empty, // to set on response
+            otel.status_code = Empty, // to set on response
+            trace_id = Empty, // to set on response
+            request_id = Empty, // to set
+            exception.message = Empty, // to set on response
+            rpc.system = Empty,
+            rpc.service = Empty,
+            rpc.method = Empty,
+            http.grpc_status = Empty,
+            http.request.body.size = Empty,
+            http.response.body.size = Empty,
+            http.request.body.elapsed_ms = Empty,
+            http.response.body.elapsed_ms = Empty,
+        );
+        span.in_scope(|| {
+            opentelemetry::trace::get_active_span(|span| {
+                for (name, values) in request.headers.grouped() {
+                    if values.is_empty() {
+                        continue;
+                    }
+
+                    //todo: use static header values?
+                    span.set_attribute(KeyValue {
+                        key: Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
+                        value: Value::Array(
+                            values
+                                .into_iter()
+                                .filter_map(|value| (self.request_header_filter)(name, value))
+                                .map(|x| StringValue::from(x.to_string()))
+                                .collect::<Vec<_>>()
+                                .into(),
+                        ),
+                    });
+                }
+            });
+        });
+        span.set_parent(opentelemetry_api::global::get_text_map_propagator(
+            |propagator| propagator.extract(&request.headers),
+        ));
+        span
+    }
 }
 
 #[async_trait::async_trait]
 impl RequestHook for Trace {
     async fn handle_request(&self, request: &mut Request) -> Result<Option<Response>> {
-        let span = make_span(request.parts());
+        let span = self.make_span(request.parts());
         request.extensions.insert(TraceInfo { span });
         Ok(None)
     }
@@ -168,8 +235,28 @@ impl LateResponseHook for Trace {
             info.span.record("otel.status_code", "OK");
         }
 
-        //TODO: add response headers somehow?
+        info.span.in_scope(|| {
+            opentelemetry::trace::get_active_span(|span| {
+                for (name, values) in request.headers.grouped() {
+                    if values.is_empty() {
+                        continue;
+                    }
 
+                    //todo: use static header values?
+                    span.set_attribute(KeyValue {
+                        key: Key::new(format!("http.response.header.{}", name.replace('-', "_"))),
+                        value: Value::Array(
+                            values
+                                .into_iter()
+                                .filter_map(|value| (self.response_header_filter)(name, value))
+                                .map(|x| StringValue::from(x.to_string()))
+                                .collect::<Vec<_>>()
+                                .into(),
+                        ),
+                    });
+                }
+            });
+        });
         response.body =
             TraceBody::wrap(info.span.clone(), std::mem::take(&mut response.body), true);
     }
