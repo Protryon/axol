@@ -49,6 +49,24 @@ pub struct Router {
     extensions: Extensions,
 }
 
+impl fmt::Debug for Router {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Router")
+            .field("segment", &self.segment)
+            .field("routed_path", &self.routed_path)
+            .field("subpaths", &self.subpaths)
+            .field("methods", &self.methods.len())
+            .field("request_hooks", &self.request_hooks.len())
+            .field("early_response_hooks", &self.early_response_hooks.len())
+            .field("late_response_hooks", &self.late_response_hooks.len())
+            .field("error_hooks", &self.error_hooks.len())
+            .field("wraps", &self.wraps.len())
+            .field("fallback", &self.fallback.is_some())
+            .field("extensions", &self.extensions)
+            .finish()
+    }
+}
+
 pub struct PathVariables(pub Vec<(Arc<str>, String)>);
 
 fn split_path_reverse(path: &str) -> Vec<Segment> {
