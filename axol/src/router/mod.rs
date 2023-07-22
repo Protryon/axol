@@ -274,7 +274,10 @@ impl Router {
             .resolve_segments_mut(segments)
     }
 
-    pub(crate) fn set_paths(&mut self, path: &str) {
+    pub(crate) fn set_paths(&mut self, mut path: &str) {
+        while path.ends_with('/') {
+            path = &path[..path.len() - 1];
+        }
         self.routed_path = Arc::new(format!("{path}/{}", self.segment));
         for child in &mut self.subpaths {
             child.set_paths(&self.routed_path);

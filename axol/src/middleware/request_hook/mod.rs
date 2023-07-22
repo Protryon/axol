@@ -5,6 +5,9 @@ use futures::Future;
 use crate::Result;
 use crate::{FromRequestParts, IntoResponse};
 
+mod realip;
+pub use realip::RealIp;
+
 #[async_trait::async_trait]
 pub trait RequestHook: Send + Sync + 'static {
     /// Called on an inbound request
