@@ -10,12 +10,13 @@ use axol_http::{
 };
 use opentelemetry::{Key, KeyValue, StringValue, Value};
 use tracing::{field::Empty, Instrument, Level, Span};
+use tracing_subscriber::registry::{Data, LookupSpan, SpanData};
 
 use crate::{
     trace::body::TraceBody, ConnectInfo, Error, LateResponseHook, MatchedPath, Plugin, RequestHook,
     Result, Router, Wrap, WrapState,
 };
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData};
 
 struct TraceInfo {
     span: Span,
@@ -136,26 +137,33 @@ impl Trace {
             http.request.body.elapsed_ms = Empty,
             http.response.body.elapsed_ms = Empty,
         );
-        span.in_scope(|| {
-            opentelemetry::trace::get_active_span(|span| {
-                for (name, values) in request.headers.grouped() {
-                    let values: Vec<StringValue> = values
-                        .into_iter()
-                        .filter_map(|value| (self.request_header_filter)(name, value))
-                        .map(|x| StringValue::from(x.to_string()))
-                        .collect::<Vec<_>>();
-                    if values.is_empty() {
-                        continue;
-                    }
+        if let Some(span_id) = span.id() {
+            tracing::dispatcher::get_default(|dispatch| {
+                if let Some(lookup) = dispatch.downcast_ref::<&dyn LookupSpan<Data = Data<'_>>>() {
+                    let span = lookup.span_data(&span_id).expect("missing span");
+                    let mut extensions = span.extensions_mut();
+                    if let Some(data) = extensions.get_mut::<OtelData>() {
+                        let target = data.builder.attributes.as_mut().unwrap();
+                        for (name, values) in request.headers.grouped() {
+                            let values: Vec<StringValue> = values
+                                .into_iter()
+                                .filter_map(|value| (self.request_header_filter)(name, value))
+                                .map(|x| StringValue::from(x.to_string()))
+                                .collect::<Vec<_>>();
+                            if values.is_empty() {
+                                continue;
+                            }
 
-                    //todo: use static header values?
-                    span.set_attribute(KeyValue {
-                        key: Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
-                        value: Value::Array(values.into()),
-                    });
+                            //todo: use static header values?
+                            target.insert(
+                                Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
+                                Value::Array(values.into()),
+                            );
+                        }
+                    }
                 }
             });
-        });
+        }
         span.set_parent(opentelemetry_api::global::get_text_map_propagator(
             |propagator| propagator.extract(&request.headers),
         ));
@@ -234,26 +242,37 @@ impl LateResponseHook for Trace {
             info.span.record("otel.status_code", "OK");
         }
 
-        info.span.in_scope(|| {
-            opentelemetry::trace::get_active_span(|span| {
-                for (name, values) in request.headers.grouped() {
-                    let values: Vec<StringValue> = values
-                        .into_iter()
-                        .filter_map(|value| (self.response_header_filter)(name, value))
-                        .map(|x| StringValue::from(x.to_string()))
-                        .collect::<Vec<_>>();
-                    if values.is_empty() {
-                        continue;
-                    }
+        if let Some(span_id) = info.span.id() {
+            tracing::dispatcher::get_default(|dispatch| {
+                if let Some(lookup) = dispatch.downcast_ref::<&dyn LookupSpan<Data = Data<'_>>>() {
+                    let span = lookup.span_data(&span_id).expect("missing span");
+                    let mut extensions = span.extensions_mut();
+                    if let Some(data) = extensions.get_mut::<OtelData>() {
+                        let target = data.builder.attributes.as_mut().unwrap();
+                        for (name, values) in response.headers.grouped() {
+                            let values: Vec<StringValue> = values
+                                .into_iter()
+                                .filter_map(|value| (self.response_header_filter)(name, value))
+                                .map(|x| StringValue::from(x.to_string()))
+                                .collect::<Vec<_>>();
+                            if values.is_empty() {
+                                continue;
+                            }
 
-                    //todo: use static header values?
-                    span.set_attribute(KeyValue {
-                        key: Key::new(format!("http.response.header.{}", name.replace('-', "_"))),
-                        value: Value::Array(values.into()),
-                    });
+                            //todo: use static header values?
+                            target.insert(
+                                Key::new(format!(
+                                    "http.response.header.{}",
+                                    name.replace('-', "_")
+                                )),
+                                Value::Array(values.into()),
+                            );
+                        }
+                    }
                 }
             });
-        });
+        }
+
         response.body =
             TraceBody::wrap(info.span.clone(), std::mem::take(&mut response.body), true);
     }
