@@ -28,7 +28,6 @@ struct LogInfo {
 #[async_trait::async_trait]
 impl RequestHook for Logger {
     async fn handle_request(&self, request: &mut Request) -> Result<Option<Response>> {
-        println!("logger req");
         request.extensions.insert(LogInfo {
             start: Instant::now(),
         });
@@ -55,23 +54,43 @@ impl LateResponseHook for Logger {
         if let Some(new_level) = response.extensions.get::<Level>() {
             level = *new_level;
         }
+        let mut grpc_status = String::new();
+        #[cfg(feature = "grpc")]
+        {
+            if let Some(status) = response.extensions.get::<crate::grpc::Status>().copied() {
+                grpc_status = format!(" [{}]", status);
+            }
+        }
+        let mut grpc_message = String::new();
+        #[cfg(feature = "grpc")]
+        {
+            if let Some(status) = response.extensions.get::<crate::grpc::StatusMessage>() {
+                grpc_message = format!("\n    {}", status.0);
+            }
+        }
         //TODO: configurable log format
         log::log!(
             level,
-            "[{}] {} {} -> {} [{:.02} ms]",
+            "[{}] {} {} -> {}{} [{:.02} ms]{}",
             remote.0,
             request.method,
-            request.uri,
+            request
+                .uri
+                .path_and_query()
+                .map(|x| x.as_str())
+                .unwrap_or_default(),
             response.status,
-            elapsed.as_secs_f64() * 1000.0
+            grpc_status,
+            elapsed.as_secs_f64() * 1000.0,
+            grpc_message,
         );
     }
 }
 
 impl Plugin for Logger {
-    fn apply(&self, router: Router, path: &str) -> Router {
+    fn apply(self, router: Router, path: &str) -> Router {
         router
-            .request_hook(path, self.clone())
-            .late_response_hook(path, self.clone())
+            .request_hook_direct(path, self.clone())
+            .late_response_hook_direct(path, self.clone())
     }
 }

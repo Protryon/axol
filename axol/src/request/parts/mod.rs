@@ -1,6 +1,10 @@
-use axol_http::{header::HeaderMap, request::RequestPartsRef, Method, Uri, Version};
+use axol_http::{
+    header::HeaderMap,
+    request::{RequestParts, RequestPartsRef},
+    Body, Method, Uri, Version,
+};
 
-use crate::Result;
+use crate::{FromRequest, Result};
 
 mod query;
 pub use query::*;
@@ -39,9 +43,37 @@ impl<'a> FromRequestParts<'a> for Method {
 }
 
 #[async_trait::async_trait]
+impl<'a> FromRequest<'a> for Method {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for &'a HeaderMap {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(&request.headers)
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for &'a HeaderMap {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequestParts<'a> for HeaderMap {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        Ok(request.headers.clone())
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for HeaderMap {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
     }
 }
 
@@ -53,9 +85,65 @@ impl<'a> FromRequestParts<'a> for &'a Uri {
 }
 
 #[async_trait::async_trait]
+impl<'a> FromRequest<'a> for &'a Uri {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequestParts<'a> for Uri {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        Ok(request.uri.clone())
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for Uri {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for Version {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(request.version)
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for Version {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for RequestPartsRef<'a> {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequestParts<'a> for RequestPartsRef<'a> {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        Ok(request)
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for RequestParts {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequestParts<'a> for RequestParts {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        Ok(request.into_owned())
     }
 }
 

@@ -12,6 +12,26 @@ pub struct HeaderMap {
     items: Vec<(Cow<'static, str>, Cow<'static, str>)>,
 }
 
+#[cfg(feature = "otel")]
+impl opentelemetry_api::propagation::Extractor for &HeaderMap {
+    /// Get a value for a key from the HeaderMap.  If the value is not valid ASCII, returns None.
+    fn get(&self, key: &str) -> Option<&str> {
+        (&**self).get(key)
+    }
+
+    /// Collect all the keys from the HeaderMap.
+    fn keys(&self) -> Vec<&str> {
+        self.iter().map(|x| x.0).collect()
+    }
+}
+
+#[cfg(feature = "otel")]
+impl opentelemetry_api::propagation::Injector for &mut HeaderMap {
+    fn set(&mut self, key: &str, value: String) {
+        self.append(key, value);
+    }
+}
+
 impl HeaderMap {
     /// Create an empty `HeaderMap`.
     ///

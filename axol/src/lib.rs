@@ -11,7 +11,7 @@ mod bidirectional;
 pub use bidirectional::*;
 
 mod error;
-pub use error::{Error, Result};
+pub use error::*;
 
 mod router;
 pub use router::*;

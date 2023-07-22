@@ -19,7 +19,7 @@ pub trait ErrorHook: Send + Sync + 'static {
 }
 
 #[async_trait::async_trait]
-impl<F, Fut, Res> ErrorHook for F
+impl<F, Fut, Res> ErrorHookExpansion<()> for F
 where
     F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<Option<Res>>> + Send,

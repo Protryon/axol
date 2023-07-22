@@ -1,9 +1,9 @@
 use std::ops::Deref;
 
 use anyhow::anyhow;
-use axol_http::{request::RequestPartsRef, response::ResponsePartsRef};
+use axol_http::{request::RequestPartsRef, response::ResponsePartsRef, Body};
 
-use crate::{Error, FromRequestParts, IntoResponseParts, Result};
+use crate::{Error, FromRequest, FromRequestParts, IntoResponseParts, Result};
 
 #[derive(Debug, Clone, Copy)]
 #[must_use]
@@ -19,6 +19,13 @@ impl<'a, T: Send + Sync + Clone + 'static> FromRequestParts<'a> for Extension<T>
                 .ok_or_else(|| Error::internal(anyhow!("missing request extension")))?
                 .clone(),
         ))
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a, T: Send + Sync + Clone + 'static> FromRequest<'a> for Extension<T> {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
     }
 }
 

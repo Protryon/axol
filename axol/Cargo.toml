@@ -37,12 +37,25 @@ tokio-stream = { version = "0.1", optional = true }
 
 multer = { version = "2.1", optional = true }
 
+prost = { version = "0.11", optional = true }
+
+tracing = { version = "0.1", optional = true }
+
+opentelemetry_api = { version = "0.19.0", optional = true }
+opentelemetry-http = { version = "0.8.0", optional = true }
+tracing-opentelemetry = { version = "0.19.0", optional = true }
+tracing-futures = { version = "0.2", optional = true, features = ["futures-03"] }
+
+
 [dev-dependencies]
 env_logger = "0.10.0"
 tokio = { version = "1.25.0", features = ["full"] }
+reqwest = { version = "0.11", features = ["json", "multipart"] }
 
 [features]
-default = ["ws", "tls", "multipart"]
+default = ["ws", "tls", "multipart", "grpc", "trace"]
 ws = ["tokio-tungstenite", "sha1", "base64"]
 tls = ["rustls", "tokio-rustls", "tokio-stream"]
 multipart = ["multer"]
+grpc = ["base64", "prost"]
+trace = ["tracing", "axol-http/otel", "opentelemetry_api", "opentelemetry-http", "tracing-opentelemetry", "tracing-futures"]

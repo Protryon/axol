@@ -1,16 +1,17 @@
 use std::borrow::Cow;
+use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
-use crate::Result;
 use crate::{ConnectInfo, DefaultErrorHook, Error, ErrorHook, ObservedRoute, RawPathExt};
+use crate::{IntoResponse, Result, WrapState};
 use axol_http::body::{BodyComponent, BodyWrapper};
 use axol_http::header::HeaderMapConvertError;
 use axol_http::{request::Request, response::Response};
-use axol_http::{Body, Method};
+use axol_http::{Body, StatusCode};
 use derive_builder::Builder;
-use futures::Stream;
+use futures::{FutureExt, Stream};
 use hyper::body::HttpBody;
 use hyper::server::accept::Accept;
 use hyper::server::conn::AddrIncoming;
@@ -19,8 +20,10 @@ pub use hyper::Error as HyperError;
 use hyper::{
     server::conn::AddrStream, Body as HyperBody, Request as HyperRequest, Response as HyperResponse,
 };
+use log::error;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tracing::Instrument;
 
 use crate::Router;
 
@@ -182,17 +185,24 @@ where
     I::Conn: AsyncRead + AsyncWrite + RemoteSocket + Unpin + Send + 'static,
 {
     async fn request_phase(
-        observed: &ObservedRoute<'_>,
+        observed: &mut ObservedRoute<'_>,
         request: &mut Request,
     ) -> Result<Response> {
-        for middleware in &observed.request_hooks {
-            if let Some(response) = middleware.handle_request(request).await? {
-                return Ok(response);
+        for middleware in std::mem::take(&mut observed.request_hooks) {
+            match middleware.handle_request(request).await {
+                Ok(Some(x)) => return Ok(x),
+                Err(Error::SkipMiddleware) | Ok(None) => (),
+                Err(e) => return Err(e),
             }
         }
         let body = std::mem::take(&mut request.body);
 
-        observed.route.call(request.parts(), body).await
+        let state = WrapState {
+            wraps: std::mem::take(&mut observed.wraps),
+            handler: &**observed.route,
+            request: request.parts(),
+        };
+        state.next(body).await
     }
 
     async fn handle_error(
@@ -203,7 +213,7 @@ where
         for middleware in &observed.error_hooks {
             match middleware.handle_error(request.parts(), &mut error).await {
                 Ok(Some(x)) => return x,
-                Ok(None) => (),
+                Err(Error::SkipMiddleware) | Ok(None) => (),
                 Err(e) => {
                     log::error!("error hook middleware failure: {e}");
                 }
@@ -226,7 +236,7 @@ where
                 .handle_response(request.parts(), &mut response)
                 .await
             {
-                Ok(()) => (),
+                Err(Error::SkipMiddleware) | Ok(()) => (),
                 Err(error) => {
                     return Self::handle_error(observed, request, error).await;
                 }
@@ -272,12 +282,6 @@ where
                 }),
             },
         };
-        if request.method != Method::Connect
-            && (request.uri.scheme().is_some() || request.uri.host().is_some())
-        {
-            return Err(Error::UnprocessableEntity);
-        }
-
         let mut observed = router.resolve_path(request.method, request.uri.path());
         for (_, value) in observed.variables.0.iter_mut() {
             let decoded = percent_encoding::percent_decode_str(value)
@@ -287,20 +291,53 @@ where
                 *value = decoded;
             }
         }
+        //TODO: make this extension gathering more efficient
+        request
+            .extensions
+            .extend(std::mem::take(&mut observed.extensions));
         request
             .extensions
             .insert(RawPathExt(std::mem::take(&mut observed.variables.0)));
         request.extensions.insert(ConnectInfo(address));
 
-        let mut late_response = match Self::request_phase(&observed, &mut request).await {
-            Ok(x) => Self::handle_early_response(&observed, &mut request, x).await,
-            Err(error) => Self::handle_error(&observed, &mut request, error).await,
-        };
-        Self::handle_late_response(&observed, &mut request, &mut late_response).await;
+        #[cfg(feature = "tracing")]
+        let remote = address;
+        #[cfg(feature = "tracing")]
+        let span = tracing::span!(tracing::Level::INFO, "handle request", %remote, %request.uri);
 
-        if request.method == Method::Head {
-            late_response.body = Body::default();
-        }
+        // we are not passing any interior mutability or mutability into the catch_unwind.
+        // (that isn't dropped inside if a panic occurs)
+        // TODO: this might not be a good idea, analyze how this could interact with application code
+        let late_response = AssertUnwindSafe(async move {
+            let mut late_response = match Self::request_phase(&mut observed, &mut request).await {
+                Ok(x) => Self::handle_early_response(&observed, &mut request, x).await,
+                Err(error) => Self::handle_error(&observed, &mut request, error).await,
+            };
+            Self::handle_late_response(&observed, &mut request, &mut late_response).await;
+            late_response
+        })
+        .catch_unwind();
+
+        #[cfg(feature = "tracing")]
+        let late_response = late_response.instrument(span.clone()).await;
+        #[cfg(not(feature = "tracing"))]
+        let late_response = late_response.await;
+        #[cfg(feature = "tracing")]
+        let _span = span.enter();
+        // no more awaiting because of in-span
+
+        let late_response = match late_response {
+            Ok(x) => x,
+            Err(e) => {
+                let display = e
+                    .downcast::<String>()
+                    .map(|x| *x)
+                    .or_else(|e| e.downcast::<&'static str>().map(|x| x.to_string()))
+                    .unwrap_or_else(|e| format!("{e:?}"));
+                error!("panic during handler/middlware: {display}");
+                StatusCode::InternalServerError.into_response().unwrap()
+            }
+        };
 
         Ok(late_response)
     }
@@ -310,10 +347,15 @@ where
         address: SocketAddr,
         request: HyperRequest<HyperBody>,
     ) -> Result<HyperResponse<BodyWrapper>, Infallible> {
-        let response = match Self::do_handle_axol_response(router, address, request).await {
+        let is_head = request.method() == axol_http::http::Method::HEAD;
+        let mut response = match Self::do_handle_axol_response(router, address, request).await {
             Ok(x) => x,
             Err(e) => e.into_response(),
         };
+
+        if is_head {
+            std::mem::take(&mut response.body);
+        }
 
         let status: axol_http::http::StatusCode = response.status.into();
         let mut builder = HyperResponse::builder()
@@ -332,9 +374,10 @@ where
     }
 
     pub async fn serve_custom(
-        self,
+        mut self,
         customize: impl FnOnce(Builder<I>) -> Builder<I>,
     ) -> Result<(), hyper::Error> {
+        self.router.set_paths("");
         let router = Arc::new(self.router);
         let service = hyper::service::make_service_fn(move |conn: &I::Conn| {
             let addr = conn.remote_addr();

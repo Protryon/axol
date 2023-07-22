@@ -1,4 +1,8 @@
-use std::{fmt, pin::Pin, task::{Context, Poll}};
+use std::{
+    fmt,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt, TryStreamExt};
@@ -17,11 +21,12 @@ pub enum Body {
     Bytes(Vec<u8>),
     Stream {
         size_hint: Option<usize>,
-        stream: Pin<
-            Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>,
-        >,
+        stream: BodyStream,
     },
 }
+
+pub type BodyStream =
+    Pin<Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>>;
 
 /// Wrapper over `Body` that implements `http_body::Body`
 pub struct BodyWrapper {
@@ -59,6 +64,25 @@ impl Body {
         Self::default()
     }
 
+    pub fn bytes_and_trailers(bytes: Vec<u8>, trailers: HeaderMap) -> Self {
+        Body::Stream {
+            size_hint: Some(bytes.len()),
+            stream: Box::pin(futures::stream::iter([
+                Ok(BodyComponent::Data(bytes.into())),
+                Ok(BodyComponent::Trailers(trailers)),
+            ])),
+        }
+    }
+
+    pub fn trailers(trailers: HeaderMap) -> Self {
+        Body::Stream {
+            size_hint: Some(0),
+            stream: Box::pin(futures::stream::once(async move {
+                Ok(BodyComponent::Trailers(trailers))
+            })),
+        }
+    }
+
     pub async fn collect(self) -> Result<Vec<u8>, anyhow::Error> {
         match self {
             Body::Bytes(x) => Ok(x),
@@ -80,10 +104,18 @@ impl Body {
         }
     }
 
-    pub fn into_stream(self) -> Pin<Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>> {
+    pub fn into_stream(
+        self,
+    ) -> Pin<Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>>
+    {
         match self {
-            Body::Bytes(bytes) => Box::pin(futures::stream::once(async move { Ok(BodyComponent::Data(bytes.into())) })),
-            Body::Stream { size_hint: _, stream } => stream,
+            Body::Bytes(bytes) => Box::pin(futures::stream::once(async move {
+                Ok(BodyComponent::Data(bytes.into()))
+            })),
+            Body::Stream {
+                size_hint: _,
+                stream,
+            } => stream,
         }
     }
 }
@@ -112,14 +144,8 @@ impl Into<Body> for () {
     }
 }
 
-impl From<Pin<Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>>>
-    for Body
-{
-    fn from(
-        stream: Pin<
-            Box<dyn Stream<Item = Result<BodyComponent, anyhow::Error>> + Send + Sync + 'static>,
-        >,
-    ) -> Self {
+impl From<BodyStream> for Body {
+    fn from(stream: BodyStream) -> Self {
         Self::Stream {
             size_hint: None,
             stream,
@@ -173,25 +199,26 @@ impl http_body::Body for BodyWrapper {
                 self.eof = true;
                 self.has_written_blob = true;
                 Poll::Ready(Some(Ok(bytes.into())))
-            },
-            Body::Stream { size_hint: _, stream } => {
-                match stream.poll_next_unpin(cx) {
-                    Poll::Pending => Poll::Pending,
-                    Poll::Ready(None) => {
-                        self.eof = true;
-                        Poll::Ready(None)
-                    },
-                    Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
-                    Poll::Ready(Some(Ok(BodyComponent::Data(data)))) => {
-                        self.bytes_streamed += data.len();
-                        Poll::Ready(Some(Ok(data)))
-                    },
-                    Poll::Ready(Some(Ok(BodyComponent::Trailers(trailers)))) => {
-                        self.pending_trailers = Some(trailers);
-                        Poll::Ready(None)
-                    },
-                }
             }
+            Body::Stream {
+                size_hint: _,
+                stream,
+            } => match stream.poll_next_unpin(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(None) => {
+                    self.eof = true;
+                    Poll::Ready(None)
+                }
+                Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+                Poll::Ready(Some(Ok(BodyComponent::Data(data)))) => {
+                    self.bytes_streamed += data.len();
+                    Poll::Ready(Some(Ok(data)))
+                }
+                Poll::Ready(Some(Ok(BodyComponent::Trailers(trailers)))) => {
+                    self.pending_trailers = Some(trailers);
+                    Poll::Ready(None)
+                }
+            },
         }
     }
 
@@ -216,12 +243,13 @@ impl http_body::Body for BodyWrapper {
             return SizeHint::with_exact(0);
         }
         match &self.body {
-            Body::Bytes(bytes) => {
-                SizeHint::with_exact(bytes.len() as u64)
-            },
-            Body::Stream { size_hint, stream: _ } => {
-                size_hint.map(|x| SizeHint::with_exact(x as u64)).unwrap_or_default()
-            }
+            Body::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
+            Body::Stream {
+                size_hint,
+                stream: _,
+            } => size_hint
+                .map(|x| SizeHint::with_exact(x as u64))
+                .unwrap_or_default(),
         }
     }
 }

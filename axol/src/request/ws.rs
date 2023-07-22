@@ -1,12 +1,12 @@
 // copied out of axum
 
-use crate::Error;
+use crate::{Error, FromRequest};
 
 use super::FromRequestParts;
 use crate::Result;
 use async_trait::async_trait;
 use axol_http::{
-    extensions::Removed, request::RequestPartsRef, response::Response, Method, StatusCode,
+    extensions::Removed, request::RequestPartsRef, response::Response, Body, Method, StatusCode,
 };
 use futures_util::{
     sink::{Sink, SinkExt},
@@ -263,7 +263,12 @@ impl<'a> FromRequestParts<'a> for WebSocketUpgrade<DefaultOnFailedUpgrade> {
             return Err(Error::method_not_allowed("Request method must be `GET`"));
         }
 
-        if request.headers.get("connection") != Some("upgrade") {
+        if !request
+            .headers
+            .get("connection")
+            .map(|x| x.eq_ignore_ascii_case("upgrade"))
+            .unwrap_or_default()
+        {
             return Err(Error::bad_request(
                 "`Connection` header did not include 'upgrade'",
             ));
@@ -314,6 +319,13 @@ impl<'a> FromRequestParts<'a> for WebSocketUpgrade<DefaultOnFailedUpgrade> {
             sec_websocket_protocol,
             on_failed_upgrade: DefaultOnFailedUpgrade,
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for WebSocketUpgrade<DefaultOnFailedUpgrade> {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
     }
 }
 

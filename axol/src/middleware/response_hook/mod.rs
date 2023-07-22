@@ -23,7 +23,7 @@ pub trait LateResponseHook: Send + Sync + 'static {
 }
 
 #[async_trait::async_trait]
-impl<F, Fut> EarlyResponseHook for F
+impl<F, Fut> EarlyResponseHookExpansion<()> for F
 where
     F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<()>> + Send,
@@ -59,7 +59,7 @@ impl<G: 'static> EarlyResponseHook for Box<dyn EarlyResponseHookExpansion<G>> {
 //
 
 #[async_trait::async_trait]
-impl<F, Fut> LateResponseHook for F
+impl<F, Fut> LateResponseHookExpansion<()> for F
 where
     F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future<Output = ()> + Send,
@@ -103,8 +103,8 @@ macro_rules! impl_handler {
         #[allow(non_snake_case)]
         #[async_trait::async_trait]
         impl<F, Fut, $($ty,)*> LateResponseHookExpansion<(($($ty,)*), Fut)> for F
-        where for<'a> F: Fn($($ty,)* &mut Response) -> Fut + Send + Sync + 'static,
-            Fut: Future<Output = ()> + Send + 'static,
+        where for<'a> F: Fn($($ty,)* Response) -> Fut + Send + Sync + 'static,
+            Fut: Future<Output = Response> + Send + 'static,
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
         {
             async fn handle_response<'a>(&self, request: RequestPartsRef<'a>, response: &mut Response) {
@@ -118,7 +118,8 @@ macro_rules! impl_handler {
                     };
                 )*
 
-                self($($ty,)* response).await
+                let owned_response = std::mem::take(response);
+                *response = self($($ty,)* owned_response).await;
             }
         }
     };

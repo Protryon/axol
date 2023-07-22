@@ -1,7 +1,4 @@
-use std::{
-    any::Any,
-    convert::Infallible,
-};
+use std::{any::Any, convert::Infallible};
 
 use http::Error as HttpError;
 use thiserror::Error;
@@ -142,7 +139,7 @@ pub struct RequestParts {
 }
 
 impl RequestParts {
-    pub fn as_ref(&mut self) -> RequestPartsRef<'_> {
+    pub fn as_ref(&self) -> RequestPartsRef<'_> {
         RequestPartsRef {
             method: self.method,
             uri: &self.uri,
@@ -169,6 +166,18 @@ pub struct RequestPartsRef<'a> {
 
     /// The request's extensions.
     pub extensions: &'a Extensions,
+}
+
+impl<'a> RequestPartsRef<'a> {
+    pub fn into_owned(&self) -> RequestParts {
+        RequestParts {
+            method: self.method,
+            uri: self.uri.clone(),
+            version: self.version,
+            headers: self.headers.clone(),
+            extensions: self.extensions.clone(),
+        }
+    }
 }
 
 impl Request {

@@ -25,6 +25,32 @@ impl RedirectMode {
     }
 }
 
+impl IntoResponse for (RedirectMode, Uri) {
+    fn into_response(self) -> Result<Response> {
+        (
+            AppendHeader("location", self.1.to_string()),
+            self.0.status(),
+        )
+            .into_response()
+    }
+}
+
+impl IntoResponse for (RedirectMode, Url) {
+    fn into_response(self) -> Result<Response> {
+        (
+            AppendHeader("location", self.1.to_string()),
+            self.0.status(),
+        )
+            .into_response()
+    }
+}
+
+impl IntoResponse for Url {
+    fn into_response(self) -> Result<Response> {
+        (RedirectMode::TemporaryRedirect, self).into_response()
+    }
+}
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(thiserror::Error, Debug)]
@@ -104,6 +130,18 @@ pub enum Error {
     /// Returns a 500 Internal Service Error and logs the anyhow::Error to log::error (by default)
     #[error("{0:#}")]
     Internal(anyhow::Error),
+
+    #[cfg(feature = "grpc")]
+    #[error("{0:?}")]
+    Grpc(crate::grpc::Status),
+    #[cfg(feature = "grpc")]
+    #[error("{0:?}")]
+    GrpcMessage(crate::grpc::Status, String),
+
+    // if returned from a middleware, it's skipped with no further action. used to return from extractors as an early filter.
+    // there will be a panic if used elsewhere
+    #[error("unreachable")]
+    SkipMiddleware,
 }
 
 impl Default for Error {
@@ -145,22 +183,21 @@ impl Error {
             Error::ServiceUnavailable => StatusCode::ServiceUnavailable.into_response().unwrap(),
             Error::GatewayTimeout => StatusCode::GatewayTimeout.into_response().unwrap(),
 
-            Error::Redirect(mode, uri) => {
-                (AppendHeader("location", uri.to_string()), mode.status())
-                    .into_response()
-                    .unwrap()
-            }
-            Error::RedirectUrl(mode, uri) => {
-                (AppendHeader("location", uri.to_string()), mode.status())
-                    .into_response()
-                    .unwrap()
-            }
+            Error::Redirect(mode, uri) => (mode, uri).into_response().unwrap(),
+            Error::RedirectUrl(mode, uri) => (mode, uri).into_response().unwrap(),
             Error::BadUtf8 => (StatusCode::UnprocessableEntity, "invalid UTF-8 in request")
                 .into_response()
                 .unwrap(),
             Error::Status(s) => s.into_response().unwrap(),
             Error::Response(r) => r,
             Error::Internal(_) => StatusCode::InternalServerError.into_response().unwrap(),
+            #[cfg(feature = "grpc")]
+            Error::Grpc(status) => status.into_response().unwrap(),
+            #[cfg(feature = "grpc")]
+            Error::GrpcMessage(status, message) => (status, crate::grpc::StatusMessage(message))
+                .into_response()
+                .unwrap(),
+            Error::SkipMiddleware => unreachable!(),
         }
     }
 }

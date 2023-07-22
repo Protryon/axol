@@ -1,17 +1,22 @@
-use std::{any::{Any, TypeId}, sync::{Mutex, Arc}, collections::HashMap, hash::{Hasher, BuildHasherDefault}};
+use std::{
+    any::{Any, TypeId},
+    collections::HashMap,
+    hash::{BuildHasherDefault, Hasher},
+    sync::{Arc, Mutex},
+};
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Extensions {
-    inner: Mutex<ExtensionInner>,
+    inner: Arc<Mutex<ExtensionInner>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct ExtensionInner {
     map: HashMap<TypeId, ExtensionItem, BuildHasherDefault<IdHasher>>,
     values: Vec<Option<Arc<dyn Any + Send + Sync>>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ExtensionItem {
     index: usize,
     ever_fetched: bool,
@@ -32,6 +37,16 @@ pub enum Removed<T> {
     Invalidated,
 }
 
+impl<T> Removed<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            Removed::Removed(x) => x,
+            Removed::Referenced(_) => panic!("extension is referenced"),
+            Removed::Invalidated => panic!("extension is invalidated (was referenced)"),
+        }
+    }
+}
+
 impl Extensions {
     pub fn new() -> Self {
         Default::default()
@@ -43,7 +58,13 @@ impl Extensions {
         let type_id = TypeId::of::<T>();
         let mut inner = self.inner.lock().unwrap();
         let target_index = inner.values.len();
-        let old_index = inner.map.insert(type_id, ExtensionItem { index: target_index, ever_fetched: false });
+        let old_index = inner.map.insert(
+            type_id,
+            ExtensionItem {
+                index: target_index,
+                ever_fetched: false,
+            },
+        );
         inner.values.push(Some(Arc::new(val)));
         if old_index.is_some() {
             return InsertEffect::Replaced;
@@ -157,7 +178,7 @@ impl From<http::Extensions> for Extensions {
             }
         }
         Self {
-            inner: Mutex::new(inner),
+            inner: Arc::new(Mutex::new(inner)),
         }
     }
 }

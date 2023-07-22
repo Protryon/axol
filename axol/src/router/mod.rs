@@ -1,19 +1,32 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use crate::{
-    EarlyResponseHook, Error, ErrorHook, Handler, HandlerExpansion, LateResponseHook, Plugin,
-    RequestHook, Result,
+    EarlyResponseHook, EarlyResponseHookExpansion, Error, ErrorHook, ErrorHookExpansion, Handler,
+    HandlerExpansion, LateResponseHook, LateResponseHookExpansion, Plugin, RequestHook,
+    RequestHookExpansion, Result, Wrap,
 };
-use axol_http::{response::Response, Method};
+use axol_http::{response::Response, Extensions, Method};
 use log::warn;
 
 type Route = Arc<dyn Handler>;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 enum Segment {
     Literal(String),
     Variable(Arc<str>),
 }
+
+impl fmt::Display for Segment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Segment::Literal(x) => write!(f, "{x}"),
+            Segment::Variable(x) => write!(f, ":{x}"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchedPath(pub Arc<String>);
 
 impl Default for Segment {
     fn default() -> Self {
@@ -24,13 +37,16 @@ impl Default for Segment {
 #[derive(Default, Clone)]
 pub struct Router {
     segment: Segment,
+    routed_path: Arc<String>,
     subpaths: Vec<Router>,
     methods: Vec<(Method, Route)>,
     request_hooks: Vec<Arc<dyn RequestHook>>,
     early_response_hooks: Vec<Arc<dyn EarlyResponseHook>>,
     late_response_hooks: Vec<Arc<dyn LateResponseHook>>,
     error_hooks: Vec<Arc<dyn ErrorHook>>,
+    wraps: Vec<Arc<dyn Wrap>>,
     fallback: Option<Route>,
+    extensions: Extensions,
 }
 
 pub struct PathVariables(pub Vec<(Arc<str>, String)>);
@@ -51,12 +67,11 @@ fn split_path_reverse(path: &str) -> Vec<Segment> {
         .collect()
 }
 
-fn split_raw_path_reverse(path: &str) -> Vec<&str> {
+fn split_raw_path(path: &str) -> Vec<&str> {
     path.trim()
         .split('/')
         .filter(|x| !x.is_empty())
         .map(|x| x.trim())
-        .rev()
         .collect()
 }
 
@@ -74,12 +89,14 @@ lazy_static::lazy_static! {
 
 pub struct ObservedRoute<'a> {
     pub route: &'a Route,
+    pub extensions: Extensions,
     pub variables: PathVariables,
     //TODO: clean these up to not clone arcs
     pub request_hooks: Vec<Arc<dyn RequestHook>>,
     pub error_hooks: Vec<Arc<dyn ErrorHook>>,
     pub early_response_hooks: Vec<Arc<dyn EarlyResponseHook>>,
     pub late_response_hooks: Vec<Arc<dyn LateResponseHook>>,
+    pub wraps: Vec<Arc<dyn Wrap>>,
 }
 
 impl<'a> ObservedRoute<'a> {
@@ -119,13 +136,15 @@ impl Router {
     pub fn resolve_path(&self, method: Method, path: &str) -> ObservedRoute<'_> {
         let mut out = ObservedRoute {
             route: &DEFAULT_ROUTE,
+            extensions: Extensions::default(),
             variables: PathVariables(vec![]),
             request_hooks: vec![],
             error_hooks: vec![],
             early_response_hooks: vec![],
             late_response_hooks: vec![],
+            wraps: vec![],
         };
-        if let Some(route) = self.do_resolve_path(&mut out, method, &split_raw_path_reverse(path)) {
+        if let Some(route) = self.do_resolve_path(&mut out, method, &split_raw_path(path)) {
             out.route = &*route;
         }
         out
@@ -149,7 +168,10 @@ impl Router {
         observed
             .early_response_hooks
             .extend(self.early_response_hooks.iter().cloned());
+        observed.wraps.extend(self.wraps.iter().cloned());
+        observed.extensions.extend(self.extensions.clone());
         let Some(segment) = segments.first() else {
+            observed.extensions.insert(MatchedPath(self.routed_path.clone()));
             if let Some((_, route)) = self.methods.iter().find(|x| x.0 == method) {
                 return Some(route);
             }
@@ -228,7 +250,17 @@ impl Router {
         let mut subrouter = Router::new();
         subrouter.segment = segment;
         self.subpaths.push(subrouter);
-        self.subpaths.last_mut().unwrap()
+        self.subpaths
+            .last_mut()
+            .unwrap()
+            .resolve_segments_mut(segments)
+    }
+
+    pub(crate) fn set_paths(&mut self, path: &str) {
+        self.routed_path = Arc::new(format!("{path}/{}", self.segment));
+        for child in &mut self.subpaths {
+            child.set_paths(&self.routed_path);
+        }
     }
 
     fn append_segment(&mut self, segments: Vec<Segment>, method: Method, route: Route) {
@@ -307,7 +339,50 @@ impl Router {
         self
     }
 
-    pub fn error_hook(mut self, path: &str, hook: impl ErrorHook) -> Self {
+    pub fn extension<T: Send + Sync + 'static>(mut self, path: &str, extension: T) -> Self {
+        let segments = split_path_reverse(path);
+        let target = self.resolve_segments_mut(segments);
+        target.extensions.insert(extension);
+        self
+    }
+
+    pub fn error_hook<G: 'static>(self, path: &str, hook: impl ErrorHookExpansion<G>) -> Self {
+        let hook: Box<dyn ErrorHookExpansion<G>> = Box::new(hook);
+        self.error_hook_direct(path, hook)
+    }
+
+    pub fn request_hook<G: 'static>(self, path: &str, hook: impl RequestHookExpansion<G>) -> Self {
+        let hook: Box<dyn RequestHookExpansion<G>> = Box::new(hook);
+        self.request_hook_direct(path, hook)
+    }
+
+    pub fn early_response_hook<G: 'static>(
+        self,
+        path: &str,
+        hook: impl EarlyResponseHookExpansion<G>,
+    ) -> Self {
+        let hook: Box<dyn EarlyResponseHookExpansion<G>> = Box::new(hook);
+        self.early_response_hook_direct(path, hook)
+    }
+
+    pub fn late_response_hook<G: 'static>(
+        self,
+        path: &str,
+        hook: impl LateResponseHookExpansion<G>,
+    ) -> Self {
+        let hook: Box<dyn LateResponseHookExpansion<G>> = Box::new(hook);
+        self.late_response_hook_direct(path, hook)
+    }
+
+    pub fn wrap(mut self, path: &str, hook: impl Wrap) -> Self {
+        let segments = split_path_reverse(path);
+        let hook: Arc<dyn Wrap> = Arc::new(hook);
+        let target = self.resolve_segments_mut(segments);
+        target.wraps.push(hook);
+        self
+    }
+
+    pub fn error_hook_direct(mut self, path: &str, hook: impl ErrorHook) -> Self {
         let segments = split_path_reverse(path);
         let hook: Arc<dyn ErrorHook> = Arc::new(hook);
         let target = self.resolve_segments_mut(segments);
@@ -315,7 +390,7 @@ impl Router {
         self
     }
 
-    pub fn request_hook(mut self, path: &str, hook: impl RequestHook) -> Self {
+    pub fn request_hook_direct(mut self, path: &str, hook: impl RequestHook) -> Self {
         let segments = split_path_reverse(path);
         let hook: Arc<dyn RequestHook> = Arc::new(hook);
         let target = self.resolve_segments_mut(segments);
@@ -323,7 +398,7 @@ impl Router {
         self
     }
 
-    pub fn early_response_hook(mut self, path: &str, hook: impl EarlyResponseHook) -> Self {
+    pub fn early_response_hook_direct(mut self, path: &str, hook: impl EarlyResponseHook) -> Self {
         let segments = split_path_reverse(path);
         let hook: Arc<dyn EarlyResponseHook> = Arc::new(hook);
         let target = self.resolve_segments_mut(segments);
@@ -331,7 +406,7 @@ impl Router {
         self
     }
 
-    pub fn late_response_hook(mut self, path: &str, hook: impl LateResponseHook) -> Self {
+    pub fn late_response_hook_direct(mut self, path: &str, hook: impl LateResponseHook) -> Self {
         let segments = split_path_reverse(path);
         let hook: Arc<dyn LateResponseHook> = Arc::new(hook);
         let target = self.resolve_segments_mut(segments);

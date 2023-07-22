@@ -12,7 +12,7 @@ pub trait RequestHook: Send + Sync + 'static {
 }
 
 #[async_trait::async_trait]
-impl<'a, F, Fut, Res> RequestHook for F
+impl<'a, F, Fut, Res> RequestHookExpansion<()> for F
 where
     F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<Option<Res>>> + Send,
@@ -40,17 +40,18 @@ macro_rules! impl_handler {
         #[allow(non_snake_case)]
         #[async_trait::async_trait]
         impl<F, Fut, Res, $($ty,)*> RequestHookExpansion<(($($ty,)*), Fut, Res)> for F
-        where for<'a> F: Fn($($ty,)* &mut Request) -> Fut + Send + Sync + 'static,
+        where F: Fn($($ty,)*) -> Fut + Send + Sync + 'static,
             Fut: Future<Output = Result<Option<Res>>> + Send + 'static,
             Res: IntoResponse,
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
         {
             async fn handle_request(&self, request: &mut Request) -> Result<Option<Response>> {
+                let parts = request.parts();
                 $(
-                    let $ty = $ty::from_request_parts(request.parts()).await?;
+                    let $ty = $ty::from_request_parts(parts).await?;
                 )*
 
-                let res = self($($ty,)* request).await?;
+                let res = self($($ty,)*).await?;
 
                 res.map(IntoResponse::into_response).transpose()
             }

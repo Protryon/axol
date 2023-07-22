@@ -776,9 +776,9 @@ mod tests {
         check_single_value!(f32, "123", 123.0);
         check_single_value!(f64, "123", 123.0);
         check_single_value!(String, "abc", "abc");
-        check_single_value!(String, "one%20two", "one two");
+        check_single_value!(String, "one two", "one two");
         check_single_value!(&str, "abc", "abc");
-        check_single_value!(&str, "one%20two", "one two");
+        check_single_value!(&str, "one two", "one two");
         check_single_value!(char, "a", 'a');
 
         let url_params = create_url_params(vec![("a", "B")]);

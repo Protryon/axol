@@ -1,5 +1,5 @@
 use crate::{IntoResponseParts, Result};
-use axol_http::{response::Response, StatusCode};
+use axol_http::{header::HeaderMap, response::Response, StatusCode};
 
 pub trait IntoResponse {
     fn into_response(self) -> Result<Response>;
@@ -51,15 +51,24 @@ impl IntoResponse for StatusCode {
     }
 }
 
+impl IntoResponse for HeaderMap {
+    fn into_response(self) -> Result<Response> {
+        Ok(Response {
+            headers: self,
+            ..Default::default()
+        })
+    }
+}
+
 impl IntoResponse for Response {
     fn into_response(self) -> Result<Response> {
         Ok(self)
     }
 }
 
-impl IntoResponse for Result<Response> {
+impl<T: IntoResponse> IntoResponse for Result<T> {
     fn into_response(self) -> Result<Response> {
-        self
+        self.and_then(|x| x.into_response())
     }
 }
 
