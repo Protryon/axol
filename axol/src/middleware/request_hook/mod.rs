@@ -41,6 +41,7 @@ impl<G: 'static> RequestHook for Box<dyn RequestHookExpansion<G>> {
 macro_rules! impl_handler {
     ( $($ty:ident),* $(,)? ) => {
         #[allow(non_snake_case)]
+        #[allow(unused_variables)]
         #[async_trait::async_trait]
         impl<F, Fut, Res, $($ty,)*> RequestHookExpansion<(($($ty,)*), Fut, Res)> for F
         where F: Fn($($ty,)*) -> Fut + Send + Sync + 'static,

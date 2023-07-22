@@ -57,6 +57,7 @@ impl<G: 'static> ErrorHook for Box<dyn ErrorHookExpansion<G>> {
 macro_rules! impl_handler {
     ( $($ty:ident),* $(,)? ) => {
         #[allow(non_snake_case)]
+        #[allow(unused_variables)]
         #[async_trait::async_trait]
         impl<F, Fut, Res, $($ty,)*> ErrorHookExpansion<(($($ty,)*), Fut, Res)> for F
         where for<'a> F: Fn($($ty,)* &mut Error) -> Fut + Send + Sync + 'static,

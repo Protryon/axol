@@ -85,6 +85,7 @@ impl<G: 'static> LateResponseHook for Box<dyn LateResponseHookExpansion<G>> {
 macro_rules! impl_handler {
     ( $($ty:ident),* $(,)? ) => {
         #[allow(non_snake_case)]
+        #[allow(unused_variables)]
         #[async_trait::async_trait]
         impl<F, Fut, $($ty,)*> EarlyResponseHookExpansion<(($($ty,)*), Fut)> for F
         where for<'a> F: Fn($($ty,)* &mut Response) -> Fut + Send + Sync + 'static,
@@ -101,6 +102,7 @@ macro_rules! impl_handler {
         }
 
         #[allow(non_snake_case)]
+        #[allow(unused_variables)]
         #[async_trait::async_trait]
         impl<F, Fut, $($ty,)*> LateResponseHookExpansion<(($($ty,)*), Fut)> for F
         where for<'a> F: Fn($($ty,)* Response) -> Fut + Send + Sync + 'static,

@@ -56,6 +56,7 @@ impl<K: AsRef<str>, V: Into<String>, const N: usize> IntoResponseParts for [(K, 
 macro_rules! impl_into_response_parts {
     ( $($ty:ident),* $(,)? ) => {
         #[allow(non_snake_case)]
+        #[allow(unused_variables)]
         impl<$($ty,)*> IntoResponseParts for ($($ty,)*)
         where
             $( $ty: IntoResponseParts, )*

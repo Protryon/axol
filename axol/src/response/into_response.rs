@@ -13,6 +13,7 @@ impl IntoResponse for () {
         })
     }
 }
+
 //TODO fill out more
 fn x() {}
 impl IntoResponse for &str {
@@ -102,4 +103,4 @@ macro_rules! impl_into_response {
     }
 }
 
-all_the_tuples_no_last_special_case!(impl_into_response);
+all_the_tuples_no_empty!(impl_into_response);

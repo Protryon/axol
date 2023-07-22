@@ -86,7 +86,7 @@ impl Trace {
         self.request_header_filter = Arc::new(func);
         self
     }
-    
+
     /// Sets the registry wrapper, needed to set HTTP request/response headers on traces
     pub fn registry(mut self, registry: RegistryWrapper) -> Self {
         self.registry = Some(registry);
@@ -267,10 +267,7 @@ impl LateResponseHook for Trace {
 
                     //todo: use static header values?
                     target.insert(
-                        Key::new(format!(
-                            "http.response.header.{}",
-                            name.replace('-', "_")
-                        )),
+                        Key::new(format!("http.response.header.{}", name.replace('-', "_"))),
                         Value::Array(values.into()),
                     );
                 }

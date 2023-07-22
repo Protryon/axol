@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
-use tracing::{Subscriber, Metadata, subscriber::Interest, span, Event};
+use tracing::{span, subscriber::Interest, Event, Metadata, Subscriber};
 use tracing_core::span::Current;
-use tracing_subscriber::{Registry, registry::{LookupSpan, Data}, filter::FilterId};
+use tracing_subscriber::{
+    filter::FilterId,
+    registry::{Data, LookupSpan},
+    Registry,
+};
 
 #[derive(Clone)]
 pub struct RegistryWrapper(pub Arc<Registry>);
