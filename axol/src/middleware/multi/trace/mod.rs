@@ -84,6 +84,13 @@ fn make_span(request: RequestPartsRef<'_>) -> Span {
         http.request.body.elapsed_ms = Empty,
         http.response.body.elapsed_ms = Empty,
     );
+    span.in_scope(|| {
+        opentelemetry::trace::get_active_span(|span| {
+            for (name, value) in &request.headers {
+                // if span.set_attribute("http.request.")
+            }
+        })
+    });
     span.set_parent(opentelemetry_api::global::get_text_map_propagator(
         |propagator| propagator.extract(&request.headers),
     ));

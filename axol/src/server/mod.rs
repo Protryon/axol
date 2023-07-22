@@ -47,6 +47,7 @@ impl ServerBuilder<AddrIncoming> {
     }
 }
 
+#[cfg(feature = "tls")]
 impl ServerBuilder<TlsIncoming> {
     pub fn bind_with_tls(
         self,

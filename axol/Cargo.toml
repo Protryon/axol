@@ -41,6 +41,7 @@ prost = { version = "0.11", optional = true }
 
 tracing = { version = "0.1", optional = true }
 
+opentelemetry = { version = "0.19.0", optional = true }
 opentelemetry_api = { version = "0.19.0", optional = true }
 opentelemetry-http = { version = "0.8.0", optional = true }
 tracing-opentelemetry = { version = "0.19.0", optional = true }
@@ -58,4 +59,4 @@ ws = ["tokio-tungstenite", "sha1", "base64"]
 tls = ["rustls", "tokio-rustls", "tokio-stream"]
 multipart = ["multer"]
 grpc = ["base64", "prost"]
-trace = ["tracing", "axol-http/otel", "opentelemetry_api", "opentelemetry-http", "tracing-opentelemetry", "tracing-futures"]
+trace = ["tracing", "axol-http/otel", "opentelemetry_api", "opentelemetry-http", "tracing-opentelemetry", "tracing-futures", "opentelemetry"]

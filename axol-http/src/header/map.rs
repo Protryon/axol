@@ -1,6 +1,7 @@
 use std::{borrow::Cow, ops::Index};
 
 use http::{header::ToStrError, HeaderName, HeaderValue};
+use smallvec::SmallVec;
 use thiserror::Error;
 
 use super::{header_name, TypedHeader};
@@ -610,6 +611,21 @@ impl HeaderMap {
     /// ```
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.items.iter().map(|(name, value)| (&**name, &**value))
+    }
+
+    pub fn grouped(&self) -> Vec<(&str, SmallVec<[&str; 2]>)> {
+        let mut names = self.iter().collect::<Vec<_>>();
+        names.sort_by_key(|x| x.0);
+        let mut out: Vec<(&str, SmallVec<[&str; 2]>)> = vec![];
+        for (name, value) in names {
+            if out.last().map(|x| x.0) == Some(name) {
+                out.last_mut().unwrap().1.push(value);
+            } else {
+                out.push((name, smallvec::smallvec![value]))
+            }
+        }
+
+        out
     }
 }
 

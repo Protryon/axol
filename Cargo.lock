@@ -67,6 +67,7 @@ dependencies = [
  "lazy_static",
  "log",
  "multer",
+ "opentelemetry",
  "opentelemetry-http",
  "opentelemetry_api",
  "percent-encoding",
@@ -105,6 +106,7 @@ dependencies = [
  "mime",
  "opentelemetry_api",
  "serde",
+ "smallvec",
  "strum",
  "thiserror",
 ]
