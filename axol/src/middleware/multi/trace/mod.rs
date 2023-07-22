@@ -8,7 +8,7 @@ use axol_http::{
     response::Response,
     Body, Version,
 };
-use opentelemetry::{Key, KeyValue, StringValue, Value};
+use opentelemetry::{Key, StringValue, Value};
 use tracing::{field::Empty, Instrument, Level, Span};
 use tracing_subscriber::registry::{Data, LookupSpan, SpanData};
 
@@ -139,10 +139,13 @@ impl Trace {
         );
         if let Some(span_id) = span.id() {
             tracing::dispatcher::get_default(|dispatch| {
+                println!("got dispatch {span_id:?}");
                 if let Some(lookup) = dispatch.downcast_ref::<&dyn LookupSpan<Data = Data<'_>>>() {
+                    println!("got lookup");
                     let span = lookup.span_data(&span_id).expect("missing span");
                     let mut extensions = span.extensions_mut();
                     if let Some(data) = extensions.get_mut::<OtelData>() {
+                        println!("got otel data");
                         let target = data.builder.attributes.as_mut().unwrap();
                         for (name, values) in request.headers.grouped() {
                             let values: Vec<StringValue> = values
@@ -153,7 +156,7 @@ impl Trace {
                             if values.is_empty() {
                                 continue;
                             }
-
+                            println!("push header {name}");
                             //todo: use static header values?
                             target.insert(
                                 Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
