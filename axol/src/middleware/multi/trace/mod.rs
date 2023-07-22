@@ -39,6 +39,8 @@ pub fn default_request_header_filter<'a>(name: &str, value: &'a str) -> Option<C
         "authorization" => Some(Cow::Borrowed("present")),
         "cookie" => Some(Cow::Borrowed("present")),
         "user-agent" => None,
+        "traceparent" => None,
+        "tracestate" => None,
         _ => Some(Cow::Borrowed(value)),
     }
 }
