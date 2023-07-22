@@ -33,6 +33,7 @@ pub fn default_request_header_filter<'a>(name: &str, value: &'a str) -> Option<C
     match name {
         "authorization" => Some(Cow::Borrowed("present")),
         "cookie" => Some(Cow::Borrowed("present")),
+        "user-agent" => None,
         _ => Some(Cow::Borrowed(value)),
     }
 }
@@ -138,6 +139,11 @@ impl Trace {
         span.in_scope(|| {
             opentelemetry::trace::get_active_span(|span| {
                 for (name, values) in request.headers.grouped() {
+                    let values: Vec<StringValue> = values
+                        .into_iter()
+                        .filter_map(|value| (self.request_header_filter)(name, value))
+                        .map(|x| StringValue::from(x.to_string()))
+                        .collect::<Vec<_>>();
                     if values.is_empty() {
                         continue;
                     }
@@ -145,14 +151,7 @@ impl Trace {
                     //todo: use static header values?
                     span.set_attribute(KeyValue {
                         key: Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
-                        value: Value::Array(
-                            values
-                                .into_iter()
-                                .filter_map(|value| (self.request_header_filter)(name, value))
-                                .map(|x| StringValue::from(x.to_string()))
-                                .collect::<Vec<_>>()
-                                .into(),
-                        ),
+                        value: Value::Array(values.into()),
                     });
                 }
             });
@@ -238,6 +237,11 @@ impl LateResponseHook for Trace {
         info.span.in_scope(|| {
             opentelemetry::trace::get_active_span(|span| {
                 for (name, values) in request.headers.grouped() {
+                    let values: Vec<StringValue> = values
+                        .into_iter()
+                        .filter_map(|value| (self.response_header_filter)(name, value))
+                        .map(|x| StringValue::from(x.to_string()))
+                        .collect::<Vec<_>>();
                     if values.is_empty() {
                         continue;
                     }
@@ -245,14 +249,7 @@ impl LateResponseHook for Trace {
                     //todo: use static header values?
                     span.set_attribute(KeyValue {
                         key: Key::new(format!("http.response.header.{}", name.replace('-', "_"))),
-                        value: Value::Array(
-                            values
-                                .into_iter()
-                                .filter_map(|value| (self.response_header_filter)(name, value))
-                                .map(|x| StringValue::from(x.to_string()))
-                                .collect::<Vec<_>>()
-                                .into(),
-                        ),
+                        value: Value::Array(values.into()),
                     });
                 }
             });
