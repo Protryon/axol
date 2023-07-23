@@ -3,10 +3,10 @@ use std::sync::Arc;
 use axol_http::{
     header::HeaderMap,
     request::{RequestParts, RequestPartsRef},
-    Body, Method, Uri, Version,
+    Method, Uri, Version,
 };
 
-use crate::{Extension, FromRequest, Result};
+use crate::{Extension, Result};
 
 mod query;
 pub use query::*;

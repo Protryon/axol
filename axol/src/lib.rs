@@ -29,9 +29,12 @@ pub use axol_http as http;
 
 pub mod prelude {
     pub use crate::{
+        bidirectional::{Form, Json, Typed},
         error::*,
         request::{FromRequest, FromRequestParts},
+        request::{Path, Query},
         response::{IntoResponse, IntoResponseParts},
+        router::Router,
     };
-    pub use axol_http::{Body, Request, RequestPartsRef, Response};
+    pub use axol_http::{Body, Request, RequestPartsRef, Response, StatusCode};
 }

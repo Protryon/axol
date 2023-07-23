@@ -157,6 +157,14 @@ impl<T, E: Into<anyhow::Error>> ErrorExt for Result<T, E> {
     }
 }
 
+impl ErrorExt for anyhow::Error {
+    type Out = Error;
+
+    fn ise(self) -> Self::Out {
+        Error::internal(self)
+    }
+}
+
 impl Default for Error {
     fn default() -> Self {
         Error::NotAnError
