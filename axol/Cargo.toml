@@ -1,6 +1,6 @@
 [package]
 name = "axol"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Protryon <max.bruce12@gmail.com>"]
 license = "Apache-2.0 OR MIT"
@@ -9,7 +9,7 @@ description = "Axol Web Framework"
 keywords = [ "http", "web", "framework" ]
 
 [dependencies]
-axol-http = { version = "0.1", path = "../axol-http", features = ["serde"] }
+axol-http = { version = "0.1.1", path = "../axol-http", features = ["serde"] }
 
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
@@ -53,6 +53,7 @@ tracing-futures = { version = "0.2", optional = true, features = ["futures-03"] 
 tracing-subscriber = { version = "0.3", optional = true }
 tracing-core = { version = "0.1", optional = true }
 
+cookie = { package = "cookie", version = "0.17", features = ["percent-encode"], optional = true }
 
 [dev-dependencies]
 env_logger = "0.10.0"
@@ -60,9 +61,10 @@ tokio = { version = "1.25.0", features = ["full"] }
 reqwest = { version = "0.11", features = ["json", "multipart"] }
 
 [features]
-default = ["ws", "tls", "multipart", "grpc", "trace"]
+default = ["ws", "tls", "multipart", "grpc", "trace", "cookie"]
 ws = ["tokio-tungstenite", "sha1", "base64"]
 tls = ["rustls", "tokio-rustls", "tokio-stream"]
 multipart = ["multer"]
 grpc = ["base64", "prost"]
 trace = ["tracing", "axol-http/otel", "opentelemetry_api", "tracing-opentelemetry", "tracing-futures", "opentelemetry", "tracing-subscriber", "tracing-core"]
+cookie = ["dep:cookie"]

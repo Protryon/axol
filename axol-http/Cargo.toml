@@ -1,11 +1,11 @@
 [package]
 name = "axol-http"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Protryon <max.bruce12@gmail.com>"]
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/Protryon/axol"
-description = "Axol Web Framework"
+description = "Axol Web Framework HTTP wrapper"
 keywords = [ "http", "web", "framework" ]
 
 [dependencies]

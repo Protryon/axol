@@ -17,3 +17,8 @@ pub use typed::*;
 
 mod extension;
 pub use extension::*;
+
+#[cfg(feature = "cookie")]
+mod cookie_jar;
+#[cfg(feature = "cookie")]
+pub use cookie_jar::*;
