@@ -1,14 +1,14 @@
 use axol_http::{
     header::{HeaderMap, COOKIE, SET_COOKIE},
     response::ResponsePartsRef,
-    RequestPartsRef,
+    Body, RequestPartsRef,
 };
 pub use cookie::{Cookie, Expiration, SameSite};
 
 #[cfg(any(feature = "cookie-signed", feature = "cookie-private"))]
 pub use cookie::Key;
 
-use crate::{FromRequestParts, IntoResponseParts, Result};
+use crate::{FromRequest, FromRequestParts, IntoResponseParts, Result};
 
 /// Extractor that grabs cookies from the request and manages the jar.
 ///
@@ -24,6 +24,13 @@ pub struct CookieJar {
 impl<'a> FromRequestParts<'a> for CookieJar {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(Self::from_headers(&request.headers))
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for CookieJar {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
     }
 }
 

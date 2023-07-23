@@ -2,8 +2,8 @@ use std::{fmt, sync::Arc};
 
 use crate::{
     EarlyResponseHook, EarlyResponseHookExpansion, Error, ErrorHook, ErrorHookExpansion, Handler,
-    HandlerExpansion, LateResponseHook, LateResponseHookExpansion, Plugin, RequestHook,
-    RequestHookExpansion, Result, Wrap,
+    HandlerExpansion, LateResponseHook, LateResponseHookExpansion, MatchedPath, Plugin,
+    RequestHook, RequestHookExpansion, Result, Wrap,
 };
 use axol_http::{response::Response, Extensions, Method};
 use log::warn;
@@ -24,9 +24,6 @@ impl fmt::Display for Segment {
         }
     }
 }
-
-#[derive(Clone, Debug)]
-pub struct MatchedPath(pub Arc<String>);
 
 impl Default for Segment {
     fn default() -> Self {

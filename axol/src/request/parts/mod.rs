@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use axol_http::{
     header::HeaderMap,
     request::{RequestParts, RequestPartsRef},
     Body, Method, Uri, Version,
 };
 
-use crate::{FromRequest, Result};
+use crate::{Extension, FromRequest, Result};
 
 mod query;
 pub use query::*;
@@ -144,6 +146,23 @@ impl<'a> FromRequest<'a> for RequestParts {
 impl<'a> FromRequestParts<'a> for RequestParts {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(request.into_owned())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchedPath(pub Arc<String>);
+
+#[async_trait::async_trait]
+impl<'a> FromRequest<'a> for MatchedPath {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a> FromRequestParts<'a> for MatchedPath {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        Ok(Extension::<Self>::from_request_parts(request).await?.0)
     }
 }
 

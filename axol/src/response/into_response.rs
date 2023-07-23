@@ -25,6 +25,15 @@ impl IntoResponse for &str {
     }
 }
 
+impl IntoResponse for &[u8] {
+    fn into_response(self) -> Result<Response> {
+        Ok(Response {
+            body: axol_http::Body::Bytes(self.to_vec()),
+            ..Default::default()
+        })
+    }
+}
+
 impl IntoResponse for String {
     fn into_response(self) -> Result<Response> {
         Ok(Response {
