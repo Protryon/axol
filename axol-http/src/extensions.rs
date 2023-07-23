@@ -116,14 +116,14 @@ impl Extensions {
     }
 
     pub fn extend(&self, other: &Extensions) {
-        let mut inner = other.inner.lock().unwrap();
+        let inner = other.inner.lock().unwrap();
         let mut this = self.inner.lock().unwrap();
         let inner_map = inner.map.clone();
         for (type_id, index) in inner_map {
-            let Some(item) = inner.values.get_mut(index.index) else {
+            let Some(item) = inner.values.get(index.index) else {
                 continue;
             };
-            let Some(item) = std::mem::take(item) else {
+            let Some(item) = item.clone() else {
                 continue;
             };
             let ext_item = ExtensionItem {
