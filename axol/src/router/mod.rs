@@ -187,6 +187,7 @@ impl Router {
             .early_response_hooks
             .extend(self.early_response_hooks.iter().cloned());
         observed.wraps.extend(self.wraps.iter().cloned());
+        log::info!("extensions for {} = {:?}", self.routed_path, self.extensions);
         observed.extensions.extend(&self.extensions);
         let Some(segment) = segments.first() else {
             observed.extensions.insert(MatchedPath(self.routed_path.clone()));

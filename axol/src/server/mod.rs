@@ -294,6 +294,7 @@ where
             }
         }
         //TODO: make this extension gathering more efficient
+        log::info!("observed extensions = {:?}", observed.extensions);
         request.extensions.extend(&observed.extensions);
         request
             .extensions
