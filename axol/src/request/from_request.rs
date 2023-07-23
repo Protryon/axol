@@ -2,9 +2,24 @@ use axol_http::{request::RequestPartsRef, Body};
 
 use crate::{Error, FromRequestParts, Result};
 
+mod private {
+    #[derive(Debug, Clone, Copy)]
+    pub enum ViaParts {}
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum ViaRequest {}
+}
+
 #[async_trait::async_trait]
-pub trait FromRequest<'a>: Sized + Send + Sync + 'a {
+pub trait FromRequest<'a, M = private::ViaRequest>: Sized + Send + Sync + 'a {
     async fn from_request(request: RequestPartsRef<'a>, body: Body) -> Result<Self>;
+}
+
+#[async_trait::async_trait]
+impl<'a, R: FromRequestParts<'a>> FromRequest<'a, private::ViaParts> for R {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
 }
 
 #[async_trait::async_trait]

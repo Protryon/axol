@@ -1,9 +1,9 @@
 use std::{ops::Deref, sync::Arc};
 
 use anyhow::anyhow;
-use axol_http::{extensions::Removed, request::RequestPartsRef, response::ResponsePartsRef, Body};
+use axol_http::{extensions::Removed, request::RequestPartsRef, response::ResponsePartsRef};
 
-use crate::{Error, FromRequest, FromRequestParts, IntoResponseParts, Result};
+use crate::{Error, FromRequestParts, IntoResponseParts, Result};
 
 #[derive(Debug, Clone, Copy)]
 #[must_use]
@@ -19,13 +19,6 @@ impl<'a, T: Send + Sync + Clone + 'static> FromRequestParts<'a> for Extension<T>
                 .ok_or_else(|| Error::internal(anyhow!("missing request extension")))?
                 .clone(),
         ))
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a, T: Send + Sync + Clone + 'static> FromRequest<'a> for Extension<T> {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
     }
 }
 
@@ -54,13 +47,6 @@ impl<'a, T: Send + Sync + Clone + 'static> FromRequestParts<'a> for ExtensionArc
     }
 }
 
-#[async_trait::async_trait]
-impl<'a, T: Send + Sync + Clone + 'static> FromRequest<'a> for ExtensionArc<T> {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
-    }
-}
-
 impl<T> Deref for ExtensionArc<T> {
     type Target = T;
 
@@ -83,13 +69,6 @@ impl<'a, T: Send + Sync + Clone + 'static> FromRequestParts<'a> for ExtensionRem
                 .ok_or_else(|| Error::internal(anyhow!("missing request extension")))?
                 .clone(),
         ))
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a, T: Send + Sync + Clone + 'static> FromRequest<'a> for ExtensionRemove<T> {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
     }
 }
 

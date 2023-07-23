@@ -45,23 +45,9 @@ impl<'a> FromRequestParts<'a> for Method {
 }
 
 #[async_trait::async_trait]
-impl<'a> FromRequest<'a> for Method {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
-    }
-}
-
-#[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for &'a HeaderMap {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(&request.headers)
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a> FromRequest<'a> for &'a HeaderMap {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
     }
 }
 
@@ -73,23 +59,9 @@ impl<'a> FromRequestParts<'a> for HeaderMap {
 }
 
 #[async_trait::async_trait]
-impl<'a> FromRequest<'a> for HeaderMap {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
-    }
-}
-
-#[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for &'a Uri {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(&request.uri)
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a> FromRequest<'a> for &'a Uri {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
     }
 }
 
@@ -101,13 +73,6 @@ impl<'a> FromRequestParts<'a> for Uri {
 }
 
 #[async_trait::async_trait]
-impl<'a> FromRequest<'a> for Uri {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
-    }
-}
-
-#[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for Version {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(request.version)
@@ -115,30 +80,9 @@ impl<'a> FromRequestParts<'a> for Version {
 }
 
 #[async_trait::async_trait]
-impl<'a> FromRequest<'a> for Version {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a> FromRequest<'a> for RequestPartsRef<'a> {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
-    }
-}
-
-#[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for RequestPartsRef<'a> {
     async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
         Ok(request)
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a> FromRequest<'a> for RequestParts {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
     }
 }
 
@@ -151,13 +95,6 @@ impl<'a> FromRequestParts<'a> for RequestParts {
 
 #[derive(Clone, Debug)]
 pub struct MatchedPath(pub Arc<String>);
-
-#[async_trait::async_trait]
-impl<'a> FromRequest<'a> for MatchedPath {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
-    }
-}
 
 #[async_trait::async_trait]
 impl<'a> FromRequestParts<'a> for MatchedPath {

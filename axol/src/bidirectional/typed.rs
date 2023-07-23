@@ -1,8 +1,8 @@
 use std::ops::{Deref, DerefMut};
 
-use axol_http::{header::TypedHeader, request::RequestPartsRef, response::ResponsePartsRef, Body};
+use axol_http::{header::TypedHeader, request::RequestPartsRef, response::ResponsePartsRef};
 
-use crate::{Error, FromRequest, FromRequestParts, IntoResponseParts, Result};
+use crate::{Error, FromRequestParts, IntoResponseParts, Result};
 
 #[derive(Debug, Clone, Copy, Default)]
 #[must_use]
@@ -37,12 +37,5 @@ impl<'a, H: TypedHeader + Send + Sync + 'a> FromRequestParts<'a> for Typed<H> {
             .get_typed::<H>()
             .ok_or_else(|| Error::bad_request(format!("missing header: {}", H::name())))
             .map(Typed)
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a, H: TypedHeader + Send + Sync + 'a> FromRequest<'a> for Typed<H> {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
     }
 }

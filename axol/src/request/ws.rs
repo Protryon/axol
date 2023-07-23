@@ -1,12 +1,12 @@
 // copied out of axum
 
-use crate::{Error, FromRequest};
+use crate::Error;
 
 use super::FromRequestParts;
 use crate::Result;
 use async_trait::async_trait;
 use axol_http::{
-    extensions::Removed, request::RequestPartsRef, response::Response, Body, Method, StatusCode,
+    extensions::Removed, request::RequestPartsRef, response::Response, Method, StatusCode,
 };
 use futures_util::{
     sink::{Sink, SinkExt},
@@ -319,13 +319,6 @@ impl<'a> FromRequestParts<'a> for WebSocketUpgrade<DefaultOnFailedUpgrade> {
             sec_websocket_protocol,
             on_failed_upgrade: DefaultOnFailedUpgrade,
         })
-    }
-}
-
-#[async_trait::async_trait]
-impl<'a> FromRequest<'a> for WebSocketUpgrade<DefaultOnFailedUpgrade> {
-    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
-        Self::from_request_parts(request).await
     }
 }
 

@@ -37,12 +37,12 @@ macro_rules! impl_handler {
     ) => {
         #[allow(non_snake_case)]
         #[async_trait::async_trait]
-        impl<F, Fut, Res, $($ty,)* $last> HandlerExpansion<(($($ty,)* $last,), Fut, Res)> for F
+        impl<F, Fut, Res, M, $($ty,)* $last> HandlerExpansion<(M, ($($ty,)* $last,), Fut, Res)> for F
         where for<'a> F: Fn($($ty,)* $last,) -> Fut + Send + Sync + 'static,
             Fut: Future<Output = Res> + Send + 'static,
             Res: IntoResponse,
             $( for<'a> $ty: FromRequestParts<'a> + Send, )*
-            for<'a> $last: FromRequest<'a> + Send,
+            for<'a> $last: FromRequest<'a, M> + Send,
         {
             async fn call<'a>(&self, request_parts: RequestPartsRef<'a>, body: Body) -> Result<Response> {
                 $(
