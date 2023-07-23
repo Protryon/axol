@@ -68,7 +68,6 @@ dependencies = [
  "log",
  "multer",
  "opentelemetry",
- "opentelemetry-http",
  "opentelemetry_api",
  "percent-encoding",
  "pin-project-lite",
@@ -981,18 +980,6 @@ checksum = "5f4b8347cc26099d3aeee044065ecc3ae11469796b4d65d065a23a584ed92a6f"
 dependencies = [
  "opentelemetry_api",
  "opentelemetry_sdk",
-]
-
-[[package]]
-name = "opentelemetry-http"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a819b71d6530c4297b49b3cae2939ab3a8cc1b9f382826a1bc29dd0ca3864906"
-dependencies = [
- "async-trait",
- "bytes",
- "http",
- "opentelemetry_api",
 ]
 
 [[package]]
