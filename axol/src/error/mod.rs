@@ -144,6 +144,19 @@ pub enum Error {
     SkipMiddleware,
 }
 
+pub trait ErrorExt {
+    type Out;
+    fn ise(self) -> Self::Out;
+}
+
+impl<T, E: Into<anyhow::Error>> ErrorExt for Result<T, E> {
+    type Out = Result<T>;
+
+    fn ise(self) -> Self::Out {
+        self.map_err(Error::internal)
+    }
+}
+
 impl Default for Error {
     fn default() -> Self {
         Error::NotAnError
