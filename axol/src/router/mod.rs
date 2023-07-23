@@ -187,7 +187,7 @@ impl Router {
             .early_response_hooks
             .extend(self.early_response_hooks.iter().cloned());
         observed.wraps.extend(self.wraps.iter().cloned());
-        observed.extensions.extend(self.extensions.clone());
+        observed.extensions.extend(&self.extensions);
         let Some(segment) = segments.first() else {
             observed.extensions.insert(MatchedPath(self.routed_path.clone()));
             if let Some((_, route)) = self.methods.iter().find(|x| x.0 == method) {

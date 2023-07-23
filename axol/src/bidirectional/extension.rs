@@ -1,7 +1,7 @@
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
 use anyhow::anyhow;
-use axol_http::{request::RequestPartsRef, response::ResponsePartsRef, Body};
+use axol_http::{extensions::Removed, request::RequestPartsRef, response::ResponsePartsRef, Body};
 
 use crate::{Error, FromRequest, FromRequestParts, IntoResponseParts, Result};
 
@@ -34,6 +34,62 @@ impl<T> Deref for Extension<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct ExtensionArc<T>(pub Arc<T>);
+
+#[async_trait::async_trait]
+impl<'a, T: Send + Sync + Clone + 'static> FromRequestParts<'a> for ExtensionArc<T> {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        Ok(Self(
+            request
+                .extensions
+                .get_arc::<T>()
+                .ok_or_else(|| Error::internal(anyhow!("missing request extension")))?
+                .clone(),
+        ))
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a, T: Send + Sync + Clone + 'static> FromRequest<'a> for ExtensionArc<T> {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
+    }
+}
+
+impl<T> Deref for ExtensionArc<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct ExtensionRemove<T>(pub Removed<T>);
+
+#[async_trait::async_trait]
+impl<'a, T: Send + Sync + Clone + 'static> FromRequestParts<'a> for ExtensionRemove<T> {
+    async fn from_request_parts(request: RequestPartsRef<'a>) -> Result<Self> {
+        Ok(Self(
+            request
+                .extensions
+                .remove::<T>()
+                .ok_or_else(|| Error::internal(anyhow!("missing request extension")))?
+                .clone(),
+        ))
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a, T: Send + Sync + Clone + 'static> FromRequest<'a> for ExtensionRemove<T> {
+    async fn from_request(request: RequestPartsRef<'a>, _: Body) -> Result<Self> {
+        Self::from_request_parts(request).await
     }
 }
 

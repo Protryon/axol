@@ -23,7 +23,7 @@ impl IntoResponseParts for HeaderMap {
 
 impl IntoResponseParts for Extensions {
     fn into_response_parts(self, response: &mut ResponsePartsRef<'_>) -> Result<()> {
-        response.extensions.extend(self);
+        response.extensions.extend(&self);
         Ok(())
     }
 }

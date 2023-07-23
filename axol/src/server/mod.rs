@@ -294,9 +294,7 @@ where
             }
         }
         //TODO: make this extension gathering more efficient
-        request
-            .extensions
-            .extend(std::mem::take(&mut observed.extensions));
+        request.extensions.extend(&observed.extensions);
         request
             .extensions
             .insert(RawPathExt(std::mem::take(&mut observed.variables.0)));
