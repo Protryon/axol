@@ -1,6 +1,8 @@
 use std::ops::{Deref, DerefMut};
 
-use axol_http::{request::RequestPartsRef, response::Response, typed_headers::ContentType, Body};
+use axol_http::{
+    mime::Mime, request::RequestPartsRef, response::Response, typed_headers::ContentType, Body,
+};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{Error, FromRequest, FromRequestParts, IntoResponse, Result, Typed};
@@ -26,8 +28,11 @@ impl<T> DerefMut for Json<T> {
 #[async_trait::async_trait]
 impl<'a, T: DeserializeOwned + Send + Sync + 'a> FromRequest<'a> for Json<T> {
     async fn from_request(request: RequestPartsRef<'a>, body: Body) -> Result<Self> {
-        let content_type = Typed::<ContentType>::from_request_parts(request).await?;
-        if content_type.0 != ContentType::json() {
+        let content_type: Mime = Typed::<ContentType>::from_request_parts(request)
+            .await?
+            .0
+            .into();
+        if content_type.essence_str() != axol_http::mime::APPLICATION_JSON.essence_str() {
             return Err(Error::unsupported_media_type(
                 "Expected request with `Content-Type: application/json`",
             ));
