@@ -234,12 +234,12 @@ impl LateResponseHook for Trace {
         } else if is_grpc {
             info.span.record("otel.status_code", "OK");
         }
-        log::info!("{}: http parent span = {:?}", request.uri.path(), info.span.id());
 
         if let (Some(span_id), Some(registry)) = (info.span.id(), self.registry.as_ref()) {
             let span = registry.span_data(&span_id).expect("missing span");
             let mut extensions = span.extensions_mut();
             if let Some(data) = extensions.get_mut::<OtelData>() {
+                println!("otel span = {:?}, trace = {:?}", data.builder.span_id, data.builder.trace_id);
                 let target = data.builder.attributes.as_mut().unwrap();
                 for (name, values) in response.headers.grouped() {
                     let values: Vec<StringValue> = values
