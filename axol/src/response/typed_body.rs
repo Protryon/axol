@@ -36,6 +36,6 @@ pub struct Html<T: Into<Vec<u8>>>(pub T);
 
 impl<T: Into<Vec<u8>>> IntoResponse for Html<T> {
     fn into_response(self) -> Result<Response> {
-        TypedBody(ContentType::json(), self.0.into()).into_response()
+        TypedBody(ContentType::html(), self.0.into()).into_response()
     }
 }
