@@ -234,6 +234,7 @@ impl LateResponseHook for Trace {
         } else if is_grpc {
             info.span.record("otel.status_code", "OK");
         }
+        log::info!("{}: http parent span = {:?}", request.uri.path(), info.span.id());
 
         if let (Some(span_id), Some(registry)) = (info.span.id(), self.registry.as_ref()) {
             let span = registry.span_data(&span_id).expect("missing span");
