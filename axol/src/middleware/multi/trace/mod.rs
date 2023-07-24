@@ -2,25 +2,21 @@ mod body;
 
 use std::{borrow::Cow, sync::Arc};
 
-use anyhow::anyhow;
-use axol_http::{
-    request::{Request, RequestPartsRef},
-    response::Response,
-    Body, Version,
-};
+use axol_http::{request::RequestPartsRef, response::Response, Version};
 use opentelemetry::{Key, StringValue, Value};
 use tracing::{field::Empty, Instrument, Level, Span};
 use tracing_subscriber::registry::{LookupSpan, SpanData};
 
 use crate::{
-    trace::body::TraceBody, ConnectInfo, Error, LateResponseHook, MatchedPath, Plugin, RequestHook,
-    Result, Router, Wrap, WrapState,
+    trace::body::TraceBody, ConnectInfo, LateResponseHook, MatchedPath, Plugin, Result, Router,
+    Wrap, WrapState,
 };
 use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData};
 
 mod registry;
 pub use registry::RegistryWrapper;
 
+#[derive(Clone)]
 struct TraceInfo {
     span: Span,
 }
@@ -180,31 +176,20 @@ impl Trace {
 }
 
 #[async_trait::async_trait]
-impl RequestHook for Trace {
-    async fn handle_request(&self, request: &mut Request) -> Result<Option<Response>> {
-        let span = self.make_span(request.parts());
-        request.extensions.insert(TraceInfo { span });
-        Ok(None)
-    }
-}
-
-#[async_trait::async_trait]
 impl Wrap for Trace {
-    async fn wrap(
-        &self,
-        request: RequestPartsRef<'_>,
-        body: Body,
-        state: WrapState<'_>,
-    ) -> Result<Response> {
-        let Some(info) = request.extensions.get::<TraceInfo>() else {
-            return Err(Error::internal(anyhow!("missing trace extension")));
-        };
+    async fn wrap(&self, mut state: WrapState<'_>) -> Result<Response> {
+        let span = self.make_span(state.request());
+        state
+            .request()
+            .extensions
+            .insert(TraceInfo { span: span.clone() });
         let out = {
-            let body = TraceBody::wrap(info.span.clone(), body, false);
-            info.span.in_scope(|| {
+            let body = state.remove_body();
+            state.set_body(TraceBody::wrap(span.clone(), body, false));
+            span.in_scope(|| {
                 tracing::event!(Level::DEBUG, "started processing request");
             });
-            let out = state.next(body).instrument(info.span.clone()).await;
+            let out = state.next().instrument(span).await;
             out
         };
         out
@@ -282,8 +267,7 @@ impl LateResponseHook for Trace {
 impl Plugin for Trace {
     fn apply(self, router: Router, path: &str) -> Router {
         router
-            .request_hook_direct(path, self.clone())
             .late_response_hook_direct(path, self.clone())
-            .wrap(path, self.clone())
+            .outer_wrap(path, self.clone())
     }
 }

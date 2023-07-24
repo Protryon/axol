@@ -33,6 +33,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c7d0618f0e0b7e8ff11427422b64564d5fb0be1940354bfe2e0529b18a9d9b8"
 
 [[package]]
+name = "async-recursion"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e97ce7de6cf12de5d7226c73f5ba9811622f4db3a5b91b55c53e987e5f91cba"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.25",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -51,9 +62,10 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "axol"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
+ "async-recursion",
  "async-trait",
  "axol-http",
  "base64 0.21.2",
@@ -96,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "axol-http"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "bytes",

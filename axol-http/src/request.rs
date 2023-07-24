@@ -181,7 +181,7 @@ impl<'a> RequestPartsRef<'a> {
 }
 
 impl Request {
-    pub fn parts(&mut self) -> RequestPartsRef<'_> {
+    pub fn parts(&self) -> RequestPartsRef<'_> {
         RequestPartsRef {
             method: self.method,
             uri: &self.uri,

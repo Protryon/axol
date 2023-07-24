@@ -4,7 +4,10 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
-use crate::{ConnectInfo, DefaultErrorHook, Error, ErrorHook, ObservedRoute, RawPathExt};
+use crate::{
+    ConnectInfo, DefaultErrorHook, Error, ErrorHook, Handler, ObservedRoute, OuterWrapState,
+    RawPathExt, RequestHook, Wrap, WrapTarget,
+};
 use crate::{IntoResponse, Result, WrapState};
 use axol_http::body::{BodyComponent, BodyWrapper};
 use axol_http::header::HeaderMapConvertError;
@@ -181,30 +184,52 @@ impl RemoteSocket for AddrStream {
     }
 }
 
+#[async_recursion::async_recursion]
+pub(crate) async fn inner_handler(
+    request_hooks: Vec<Arc<dyn RequestHook>>,
+    wraps: Vec<Arc<dyn Wrap>>,
+    handler: Arc<dyn Handler>,
+    request: &mut Request,
+) -> Result<Response> {
+    for middleware in request_hooks {
+        match middleware.handle_request(&mut *request).await {
+            Ok(Some(x)) => return Ok(x),
+            Err(Error::SkipMiddleware) | Ok(None) => (),
+            Err(e) => return Err(e),
+        }
+    }
+    let state = WrapState {
+        wraps,
+        target: WrapTarget::Handler(&*handler),
+        request,
+    };
+    state.next().await
+}
+
 impl<I: Accept + 'static> Server<I>
 where
     I::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     I::Conn: AsyncRead + AsyncWrite + RemoteSocket + Unpin + Send + 'static,
 {
     async fn request_phase(
-        observed: &mut ObservedRoute<'_>,
+        request_hooks: Vec<Arc<dyn RequestHook>>,
+        wraps: Vec<Arc<dyn Wrap>>,
+        outer_wraps: Vec<Arc<dyn Wrap>>,
+        handler: Arc<dyn Handler>,
         request: &mut Request,
     ) -> Result<Response> {
-        for middleware in std::mem::take(&mut observed.request_hooks) {
-            match middleware.handle_request(request).await {
-                Ok(Some(x)) => return Ok(x),
-                Err(Error::SkipMiddleware) | Ok(None) => (),
-                Err(e) => return Err(e),
-            }
-        }
-        let body = std::mem::take(&mut request.body);
+        let outer_wrap_state = OuterWrapState {
+            request_hooks,
+            wraps,
+            handler,
+        };
 
         let state = WrapState {
-            wraps: std::mem::take(&mut observed.wraps),
-            handler: &**observed.route,
-            request: request.parts(),
+            wraps: outer_wraps,
+            target: WrapTarget::Phase(outer_wrap_state),
+            request,
         };
-        state.next(body).await
+        state.next().await
     }
 
     async fn handle_error(
@@ -305,11 +330,23 @@ where
         #[cfg(feature = "tracing")]
         let span = tracing::trace_span!("axol_http", %remote, %request.uri);
 
+        let wraps = std::mem::take(&mut observed.wraps);
+        let outer_wraps = std::mem::take(&mut observed.outer_wraps);
+        let request_hooks = std::mem::take(&mut observed.request_hooks);
+
         // we are not passing any interior mutability or mutability into the catch_unwind.
         // (that isn't dropped inside if a panic occurs)
         // TODO: this might not be a good idea, analyze how this could interact with application code
         let late_response = AssertUnwindSafe(async move {
-            let mut late_response = match Self::request_phase(&mut observed, &mut request).await {
+            let mut late_response = match Self::request_phase(
+                request_hooks,
+                wraps,
+                outer_wraps,
+                observed.route.clone(),
+                &mut request,
+            )
+            .await
+            {
                 Ok(x) => Self::handle_early_response(&observed, &mut request, x).await,
                 Err(error) => Self::handle_error(&observed, &mut request, error).await,
             };

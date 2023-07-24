@@ -42,6 +42,7 @@ pub struct Router {
     late_response_hooks: Vec<Arc<dyn LateResponseHook>>,
     error_hooks: Vec<Arc<dyn ErrorHook>>,
     wraps: Vec<Arc<dyn Wrap>>,
+    outer_wraps: Vec<Arc<dyn Wrap>>,
     fallback: Option<Route>,
     extensions: Extensions,
 }
@@ -112,6 +113,7 @@ pub struct ObservedRoute<'a> {
     pub early_response_hooks: Vec<Arc<dyn EarlyResponseHook>>,
     pub late_response_hooks: Vec<Arc<dyn LateResponseHook>>,
     pub wraps: Vec<Arc<dyn Wrap>>,
+    pub outer_wraps: Vec<Arc<dyn Wrap>>,
 }
 
 impl<'a> ObservedRoute<'a> {
@@ -158,6 +160,7 @@ impl Router {
             early_response_hooks: vec![],
             late_response_hooks: vec![],
             wraps: vec![],
+            outer_wraps: vec![],
         };
         if let Some(route) = self.do_resolve_path(&mut out, method, &split_raw_path(path)) {
             out.route = &*route;
@@ -184,6 +187,9 @@ impl Router {
             .early_response_hooks
             .extend(self.early_response_hooks.iter().cloned());
         observed.wraps.extend(self.wraps.iter().cloned());
+        observed
+            .outer_wraps
+            .extend(self.outer_wraps.iter().cloned());
         observed.extensions.extend(&self.extensions);
         let Some(segment) = segments.first() else {
             observed.extensions.insert(MatchedPath(self.routed_path.clone()));
@@ -397,6 +403,14 @@ impl Router {
         let hook: Arc<dyn Wrap> = Arc::new(hook);
         let target = self.resolve_segments_mut(segments);
         target.wraps.push(hook);
+        self
+    }
+
+    pub fn outer_wrap(mut self, path: &str, hook: impl Wrap) -> Self {
+        let segments = split_path_reverse(path);
+        let hook: Arc<dyn Wrap> = Arc::new(hook);
+        let target = self.resolve_segments_mut(segments);
+        target.outer_wraps.push(hook);
         self
     }
 
