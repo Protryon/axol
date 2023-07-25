@@ -134,9 +134,6 @@ impl Trace {
             http.request.body.elapsed_ms = Empty,
             http.response.body.elapsed_ms = Empty,
         );
-        span.set_parent(opentelemetry_api::global::get_text_map_propagator(
-            |propagator| propagator.extract(&request.headers),
-        ));
         if !span.is_disabled() {
             for (name, values) in request.headers.grouped() {
                 let values: Vec<StringValue> = values
@@ -154,6 +151,9 @@ impl Trace {
                 );
             }
         }
+        span.set_parent(opentelemetry_api::global::get_text_map_propagator(
+            |propagator| propagator.extract(&request.headers),
+        ));
         span
     }
 }
