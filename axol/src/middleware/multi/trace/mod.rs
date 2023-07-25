@@ -239,7 +239,7 @@ impl LateResponseHook for Trace {
             let span = registry.span_data(&span_id).expect("missing span");
             let mut extensions = span.extensions_mut();
             if let Some(data) = extensions.get_mut::<OtelData>() {
-                println!("{} otel span = {:?}, trace = {:?}\ntotal = {:?}", request.uri.path(), data.builder.span_id, data.builder.trace_id, data);
+                println!("{} otel span = {:?}, trace = {:?}, raw span = {:?}\ntotal = {:?}", request.uri.path(), data.builder.span_id, data.builder.trace_id, span_id, data);
                 let target = data.builder.attributes.as_mut().unwrap();
                 for (name, values) in response.headers.grouped() {
                     let values: Vec<StringValue> = values
