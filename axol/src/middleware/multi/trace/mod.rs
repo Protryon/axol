@@ -3,7 +3,7 @@ mod body;
 use std::{borrow::Cow, sync::Arc};
 
 use axol_http::{request::RequestPartsRef, response::Response, Version};
-use opentelemetry::{Key, StringValue, Value, trace::TraceContextExt, KeyValue};
+use opentelemetry::{StringValue, Value};
 use tracing::{field::Empty, Instrument, Level, Span};
 
 use crate::{
@@ -138,8 +138,6 @@ impl Trace {
             |propagator| propagator.extract(&request.headers),
         ));
         if !span.is_disabled() {
-            let ctx = span.context();
-            let span_ref = ctx.span();
             for (name, values) in request.headers.grouped() {
                 let values: Vec<StringValue> = values
                     .into_iter()
@@ -150,34 +148,12 @@ impl Trace {
                     continue;
                 }
                 //todo: use static header values?
-                span_ref.set_attribute(KeyValue {
-                    key: Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
-                    value: Value::Array(values.into()),
-                });
+                span.set_attribute(
+                    format!("http.request.header.{}", name.replace('-', "_")),
+                    Value::Array(values.into()),
+                );
             }
         }
-        // if let (Some(span_id), Some(registry)) = (span.id(), self.registry.as_ref()) {
-        //     let span = registry.span_data(&span_id).expect("missing span");
-        //     let mut extensions = span.extensions_mut();
-        //     if let Some(data) = extensions.get_mut::<OtelData>() {
-        //         let target = data.builder.attributes.as_mut().unwrap();
-        //         for (name, values) in request.headers.grouped() {
-        //             let values: Vec<StringValue> = values
-        //                 .into_iter()
-        //                 .filter_map(|value| (self.request_header_filter)(name, value))
-        //                 .map(|x| StringValue::from(x.to_string()))
-        //                 .collect::<Vec<_>>();
-        //             if values.is_empty() {
-        //                 continue;
-        //             }
-        //             //todo: use static header values?
-        //             target.insert(
-        //                 Key::new(format!("http.request.header.{}", name.replace('-', "_"))),
-        //                 Value::Array(values.into()),
-        //             );
-        //         }
-        //     }
-        // }
         span
     }
 }
@@ -242,8 +218,6 @@ impl LateResponseHook for Trace {
             info.span.record("otel.status_code", "OK");
         }
         if !info.span.is_disabled() {
-            let ctx = info.span.context();
-            let span_ref = ctx.span();
             for (name, values) in request.headers.grouped() {
                 let values: Vec<StringValue> = values
                     .into_iter()
@@ -254,10 +228,10 @@ impl LateResponseHook for Trace {
                     continue;
                 }
                 //todo: use static header values?
-                span_ref.set_attribute(KeyValue {
-                    key: Key::new(format!("http.response.header.{}", name.replace('-', "_"))),
-                    value: Value::Array(values.into()),
-                });
+                info.span.set_attribute(
+                    format!("http.response.header.{}", name.replace('-', "_")),
+                    Value::Array(values.into()),
+                );
             }
         }
 
