@@ -218,7 +218,7 @@ impl LateResponseHook for Trace {
             info.span.record("otel.status_code", "OK");
         }
         if !info.span.is_disabled() {
-            for (name, values) in request.headers.grouped() {
+            for (name, values) in response.headers.grouped() {
                 let values: Vec<StringValue> = values
                     .into_iter()
                     .filter_map(|value| (self.response_header_filter)(name, value))
